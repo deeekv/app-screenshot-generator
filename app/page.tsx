@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { toPng } from "html-to-image";
+import { toBlob } from "html-to-image";
 import { IosStoreCanvas } from "@/components/ios-store-canvas";
 import {
   IOS_TEMPLATE,
@@ -40,11 +40,129 @@ function createAsset(id: string): AssetItem {
   };
 }
 
-function downloadDataUrl(dataUrl: string, filename: string) {
+function downloadBlob(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = dataUrl;
+  anchor.href = objectUrl;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+function toArrayBuffer(bytes: Uint8Array) {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+function createCrcTable() {
+  const table = new Uint32Array(256);
+
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+
+  return table;
+}
+
+const CRC_TABLE = createCrcTable();
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+
+  for (const byte of bytes) {
+    crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function writeUint16(view: DataView, offset: number, value: number) {
+  view.setUint16(offset, value, true);
+}
+
+function writeUint32(view: DataView, offset: number, value: number) {
+  view.setUint32(offset, value, true);
+}
+
+function createZipBlob(files: { name: string; bytes: Uint8Array }[]) {
+  const encoder = new TextEncoder();
+  const localChunks: Uint8Array[] = [];
+  const centralChunks: Uint8Array[] = [];
+  let localOffset = 0;
+  let centralDirectorySize = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const fileCrc = crc32(file.bytes);
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    writeUint32(localView, 0, 0x04034b50);
+    writeUint16(localView, 4, 20);
+    writeUint16(localView, 6, 0);
+    writeUint16(localView, 8, 0);
+    writeUint16(localView, 10, 0);
+    writeUint16(localView, 12, 0);
+    writeUint32(localView, 14, fileCrc);
+    writeUint32(localView, 18, file.bytes.length);
+    writeUint32(localView, 22, file.bytes.length);
+    writeUint16(localView, 26, nameBytes.length);
+    writeUint16(localView, 28, 0);
+    localHeader.set(nameBytes, 30);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    writeUint32(centralView, 0, 0x02014b50);
+    writeUint16(centralView, 4, 20);
+    writeUint16(centralView, 6, 20);
+    writeUint16(centralView, 8, 0);
+    writeUint16(centralView, 10, 0);
+    writeUint16(centralView, 12, 0);
+    writeUint16(centralView, 14, 0);
+    writeUint32(centralView, 16, fileCrc);
+    writeUint32(centralView, 20, file.bytes.length);
+    writeUint32(centralView, 24, file.bytes.length);
+    writeUint16(centralView, 28, nameBytes.length);
+    writeUint16(centralView, 30, 0);
+    writeUint16(centralView, 32, 0);
+    writeUint16(centralView, 34, 0);
+    writeUint16(centralView, 36, 0);
+    writeUint32(centralView, 38, 0);
+    writeUint32(centralView, 42, localOffset);
+    centralHeader.set(nameBytes, 46);
+
+    localChunks.push(localHeader, file.bytes);
+    centralChunks.push(centralHeader);
+    localOffset += localHeader.length + file.bytes.length;
+    centralDirectorySize += centralHeader.length;
+  }
+
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  writeUint32(endView, 0, 0x06054b50);
+  writeUint16(endView, 4, 0);
+  writeUint16(endView, 6, 0);
+  writeUint16(endView, 8, files.length);
+  writeUint16(endView, 10, files.length);
+  writeUint32(endView, 12, centralDirectorySize);
+  writeUint32(endView, 16, localOffset);
+  writeUint16(endView, 20, 0);
+
+  return new Blob(
+    [...localChunks, ...centralChunks, endRecord].map((chunk) =>
+      toArrayBuffer(chunk),
+    ),
+    {
+      type: "application/zip",
+    },
+  );
 }
 
 function hexLabel(value: string) {
@@ -75,8 +193,67 @@ function toHexColor(value: string) {
   return `#${toFullHex(normalized)}`.toLowerCase();
 }
 
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function cloneAssets(assets: AssetItem[]) {
   return assets.map((asset) => ({ ...asset }));
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Unable to read file as data URL."));
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Unable to read selected file."));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+async function waitForNodeImages(node: HTMLElement) {
+  const images = Array.from(node.querySelectorAll("img"));
+
+  await Promise.all(
+    images.map(async (image) => {
+      if (image.complete && image.naturalWidth > 0) {
+        if (typeof image.decode === "function") {
+          try {
+            await image.decode();
+          } catch {
+            return;
+          }
+        }
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          image.removeEventListener("load", finish);
+          image.removeEventListener("error", finish);
+          resolve();
+        };
+
+        image.addEventListener("load", finish, { once: true });
+        image.addEventListener("error", finish, { once: true });
+      });
+    }),
+  );
 }
 
 export default function Home() {
@@ -110,6 +287,7 @@ export default function Home() {
   });
 
   const assets = history.present;
+  const exportProjectName = "";
 
   const primarySelectedAsset = useMemo(() => {
     if (!selectedAssetIds.length) {
@@ -124,6 +302,13 @@ export default function Home() {
 
   const editableAsset =
     selectedAssetIds.length === 1 ? primarySelectedAsset : null;
+
+  const exportBaseName = useMemo(() => {
+    const parts = [slugify(exportProjectName), IOS_TEMPLATE.deviceSlug].filter(
+      Boolean,
+    );
+    return parts.join("-");
+  }, [exportProjectName]);
 
   const commitAssets = useCallback(
     (updater: AssetItem[] | ((current: AssetItem[]) => AssetItem[])) => {
@@ -359,7 +544,7 @@ export default function Home() {
     setPendingUploadName(null);
   }
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+  async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !uploadTarget) {
       return;
@@ -367,30 +552,35 @@ export default function Home() {
 
     setPendingUploadName(file.name);
 
-    const objectUrl = URL.createObjectURL(file);
+    try {
+      const dataUrl = await fileToDataUrl(file);
 
-    commitAssets((current) =>
-      current.map((asset) =>
-        asset.id === uploadTarget.assetId
-          ? uploadTarget.kind === "backgroundImage"
-            ? {
-                ...asset,
-                backgroundMode: "image",
-                backgroundImageSrc: objectUrl,
-                backgroundImageName: file.name,
-              }
-            : {
-                ...asset,
-                screenshotSrc: objectUrl,
-                screenshotName: file.name,
-              }
-          : asset,
-      ),
-    );
-    setSelectedAssetIds([uploadTarget.assetId]);
-    setPreviewPanelSelected(false);
-    closeUploadModal();
-    event.target.value = "";
+      commitAssets((current) =>
+        current.map((asset) =>
+          asset.id === uploadTarget.assetId
+            ? uploadTarget.kind === "backgroundImage"
+              ? {
+                  ...asset,
+                  backgroundMode: "image",
+                  backgroundImageSrc: dataUrl,
+                  backgroundImageName: file.name,
+                }
+              : {
+                  ...asset,
+                  screenshotSrc: dataUrl,
+                  screenshotName: file.name,
+                }
+            : asset,
+        ),
+      );
+      setSelectedAssetIds([uploadTarget.assetId]);
+      setPreviewPanelSelected(false);
+      closeUploadModal();
+    } catch (error) {
+      console.error("File upload failed", error);
+    } finally {
+      event.target.value = "";
+    }
   }
 
   function startInlineTitleEdit(assetId: string, currentTitle: string) {
@@ -425,6 +615,16 @@ export default function Home() {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
       commitInlineTitleEdit();
+    }
+  }
+
+  function triggerClickablePanel(
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    onTrigger: () => void,
+  ) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onTrigger();
     }
   }
 
@@ -485,6 +685,46 @@ export default function Home() {
     );
   }
 
+  async function renderAssetExport(
+    assetId: string,
+    mode: "selected" | "all",
+  ) {
+    const node = exportRefs.current[assetId];
+    if (!node) {
+      return null;
+    }
+
+    const assetIndex = assets.findIndex((asset) => asset.id === assetId) + 1;
+    await waitForNodeImages(node);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+
+    const blob = await toBlob(node, {
+      cacheBust: true,
+      pixelRatio: 1,
+      skipFonts: true,
+      width: IOS_TEMPLATE.exportWidth,
+      height: IOS_TEMPLATE.exportHeight,
+    });
+
+    if (!blob) {
+      return null;
+    }
+
+    const filename =
+      mode === "all"
+        ? `${exportBaseName}-screen-${String(assetIndex).padStart(2, "0")}.png`
+        : `${exportBaseName}-selected-${String(assetIndex).padStart(2, "0")}.png`;
+
+    return {
+      blob,
+      bytes: new Uint8Array(await blob.arrayBuffer()),
+      filename,
+    };
+  }
+
   async function exportAssetIds(assetIds: string[], mode: "selected" | "all") {
     if (!assetIds.length) {
       return;
@@ -493,27 +733,42 @@ export default function Home() {
     setIsExporting(true);
 
     try {
-      for (const assetId of assetIds) {
-        const node = exportRefs.current[assetId];
-        if (!node) {
-          continue;
-        }
+      const renderedAssets = (
+        await Promise.all(
+          assetIds.map((assetId) => renderAssetExport(assetId, mode)),
+        )
+      ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
 
-        const assetIndex = assets.findIndex((asset) => asset.id === assetId) + 1;
-        const dataUrl = await toPng(node, {
-          cacheBust: true,
-          pixelRatio: 1,
-          width: IOS_TEMPLATE.exportWidth,
-          height: IOS_TEMPLATE.exportHeight,
-        });
-
-        const filename =
-          mode === "all"
-            ? `ios-6-5-screen-${String(assetIndex).padStart(2, "0")}.png`
-            : `ios-6-5-selected-${String(assetIndex).padStart(2, "0")}.png`;
-
-        downloadDataUrl(dataUrl, filename);
+      if (!renderedAssets.length) {
+        return;
       }
+
+      if (mode === "all") {
+        const zipBlob = createZipBlob(
+          renderedAssets.map((asset) => ({
+            name: asset.filename,
+            bytes: asset.bytes,
+          })),
+        );
+        downloadBlob(zipBlob, `${exportBaseName}-screens.zip`);
+        return;
+      }
+
+      if (renderedAssets.length === 1) {
+        downloadBlob(renderedAssets[0].blob, renderedAssets[0].filename);
+        return;
+      }
+
+      for (const asset of renderedAssets) {
+        downloadBlob(asset.blob, asset.filename);
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      }
+    } catch (error) {
+      console.error("Export failed", {
+        error,
+        assetIds,
+        mode,
+      });
     } finally {
       setIsExporting(false);
     }
@@ -682,10 +937,16 @@ export default function Home() {
 
                       <div className="studio-background-mode-body">
                         {editableAsset!.backgroundMode === "image" ? (
-                          <button
-                            type="button"
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() =>
                               openUploadModal(editableAsset!.id, "backgroundImage")
+                            }
+                            onKeyDown={(event) =>
+                              triggerClickablePanel(event, () =>
+                                openUploadModal(editableAsset!.id, "backgroundImage"),
+                              )
                             }
                             className="studio-background-upload-row"
                           >
@@ -730,7 +991,7 @@ export default function Home() {
                                 />
                               )}
                             </span>
-                          </button>
+                          </div>
                         ) : (
                           <>
                             <div className="studio-swatch-row">
@@ -819,9 +1080,15 @@ export default function Home() {
                   <section className="studio-section studio-section-bordered">
                     <p className="studio-section-label">Screenshot</p>
 
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openUploadModal(editableAsset!.id, "screenshot")}
+                      onKeyDown={(event) =>
+                        triggerClickablePanel(event, () =>
+                          openUploadModal(editableAsset!.id, "screenshot"),
+                        )
+                      }
                       className="studio-upload-panel"
                     >
                       <span className="studio-upload-row">
@@ -868,7 +1135,7 @@ export default function Home() {
                           )}
                         </span>
                       </span>
-                    </button>
+                    </div>
                   </section>
 
                   <section className="studio-section">

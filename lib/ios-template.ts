@@ -1,4 +1,6 @@
 export const IOS_TEMPLATE = {
+  deviceLabel: "iOS 6.5 inch",
+  deviceSlug: "ios-6-5-inch",
   exportWidth: 1242,
   exportHeight: 2688,
   previewScale: 0.24,
