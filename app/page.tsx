@@ -12,9 +12,11 @@ import {
 import { toBlob } from "html-to-image";
 import { IosStoreCanvas } from "@/components/ios-store-canvas";
 import {
+  IOS_5_5_TEMPLATE,
   IOS_TEMPLATE,
   defaultIosAssetState,
   type IosAssetState,
+  type IosTemplate,
 } from "@/lib/ios-template";
 
 type AssetItem = IosAssetState & {
@@ -260,6 +262,7 @@ export default function Home() {
   const idSeedRef = useRef(2);
   const exportRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const previewTileRef = useRef<HTMLDivElement>(null);
+  const preview55TileRef = useRef<HTMLDivElement>(null);
 
   const [history, setHistory] = useState<HistoryState>({
     past: [],
@@ -274,12 +277,20 @@ export default function Home() {
   const [previewScale, setPreviewScale] = useState<number>(
     IOS_TEMPLATE.previewScale,
   );
+  const [preview55Scale, setPreview55Scale] = useState<number>(
+    IOS_5_5_TEMPLATE.previewScale,
+  );
+  const [activeDeviceSlug, setActiveDeviceSlug] = useState<string>(
+    IOS_TEMPLATE.deviceSlug,
+  );
+  const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [pendingUploadName, setPendingUploadName] = useState<string | null>(null);
   const [editingTitleAssetId, setEditingTitleAssetId] = useState<string | null>(
     null,
   );
   const [titleDraft, setTitleDraft] = useState("");
+  const [titleSelectionStart, setTitleSelectionStart] = useState(0);
   const [colorDrafts, setColorDrafts] = useState<Record<ColorKey, string>>({
     titleColor: hexLabel(defaultIosAssetState.titleColor),
     baseColor: hexLabel(defaultIosAssetState.baseColor),
@@ -303,12 +314,66 @@ export default function Home() {
   const editableAsset =
     selectedAssetIds.length === 1 ? primarySelectedAsset : null;
 
-  const exportBaseName = useMemo(() => {
-    const parts = [slugify(exportProjectName), IOS_TEMPLATE.deviceSlug].filter(
-      Boolean,
+  function exportBaseName(template: IosTemplate) {
+    return [slugify(exportProjectName), template.deviceSlug].filter(Boolean).join("-");
+  }
+
+  function renderDeviceMenu() {
+    const devices = [IOS_TEMPLATE, IOS_5_5_TEMPLATE];
+    const activeDevice = devices.find(
+      (device) => device.deviceSlug === activeDeviceSlug,
+    )!;
+
+    return (
+      <div className="studio-device-menu studio-nav-device-menu">
+        <button
+          type="button"
+          className="studio-nav-device-trigger"
+          aria-haspopup="menu"
+          aria-expanded={isDeviceMenuOpen}
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsDeviceMenuOpen((current) => !current);
+          }}
+        >
+          <span>{activeDevice.deviceLabel.replace("iOS ", "iOS (") + ")"}</span>
+          <img
+            src="/assets/icon-chevron-down-medium.svg"
+            alt=""
+            aria-hidden="true"
+            className={`studio-preview-device-chevron ${
+              isDeviceMenuOpen ? "studio-preview-device-chevron-open" : ""
+            }`}
+          />
+        </button>
+        {isDeviceMenuOpen ? (
+          <div className="studio-device-menu-content" role="menu">
+            {devices.map((device) => {
+              const isActive = device.deviceSlug === activeDeviceSlug;
+              return (
+                <button
+                  key={device.deviceSlug}
+                  type="button"
+                  className={`studio-device-menu-item ${
+                    isActive ? "studio-device-menu-item-active" : ""
+                  }`}
+                  role="menuitemradio"
+                  aria-checked={isActive}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveDeviceSlug(device.deviceSlug);
+                    setIsDeviceMenuOpen(false);
+                  }}
+                >
+                  <span>{device.deviceLabel.replace("iOS ", "iOS (") + ")"}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
     );
-    return parts.join("-");
-  }, [exportProjectName]);
+  }
 
   const commitAssets = useCallback(
     (updater: AssetItem[] | ((current: AssetItem[]) => AssetItem[])) => {
@@ -382,26 +447,44 @@ export default function Home() {
   }, [redo, undo]);
 
   useEffect(() => {
-    const element = previewTileRef.current;
-    if (!element) {
-      return;
+    function closeDeviceMenu(event: MouseEvent) {
+      if (!(event.target as HTMLElement).closest(".studio-device-menu")) {
+        setIsDeviceMenuOpen(false);
+      }
     }
 
-    const updateScale = () => {
-      const width = element.getBoundingClientRect().width;
-      if (!width) {
-        return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDeviceMenuOpen(false);
       }
+    }
 
-      setPreviewScale(width / IOS_TEMPLATE.exportWidth);
+    document.addEventListener("mousedown", closeDeviceMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeDeviceMenu);
+      window.removeEventListener("keydown", closeOnEscape);
     };
+  }, []);
 
-    updateScale();
+  useEffect(() => {
+    const previews = [
+      [previewTileRef.current, IOS_TEMPLATE, setPreviewScale],
+      [preview55TileRef.current, IOS_5_5_TEMPLATE, setPreview55Scale],
+    ] as const;
+    const observers = previews.flatMap(([element, template, setScale]) => {
+      if (!element) return [];
+      const updateScale = () => {
+        const width = element.getBoundingClientRect().width;
+        if (width) setScale(width / template.exportWidth);
+      };
+      updateScale();
+      const observer = new ResizeObserver(updateScale);
+      observer.observe(element);
+      return [observer];
+    });
 
-    const observer = new ResizeObserver(() => updateScale());
-    observer.observe(element);
-
-    return () => observer.disconnect();
+    return () => observers.forEach((observer) => observer.disconnect());
   }, []);
 
   useEffect(() => {
@@ -583,11 +666,16 @@ export default function Home() {
     }
   }
 
-  function startInlineTitleEdit(assetId: string, currentTitle: string) {
+  function startInlineTitleEdit(
+    assetId: string,
+    currentTitle: string,
+    selectionStart: number,
+  ) {
     setSelectedAssetIds([assetId]);
     setPreviewPanelSelected(false);
     setEditingTitleAssetId(assetId);
     setTitleDraft(currentTitle);
+    setTitleSelectionStart(selectionStart);
   }
 
   function commitInlineTitleEdit() {
@@ -688,8 +776,9 @@ export default function Home() {
   async function renderAssetExport(
     assetId: string,
     mode: "selected" | "all",
+    template: IosTemplate,
   ) {
-    const node = exportRefs.current[assetId];
+    const node = exportRefs.current[`${template.deviceSlug}:${assetId}`];
     if (!node) {
       return null;
     }
@@ -705,8 +794,8 @@ export default function Home() {
       cacheBust: true,
       pixelRatio: 1,
       skipFonts: true,
-      width: IOS_TEMPLATE.exportWidth,
-      height: IOS_TEMPLATE.exportHeight,
+      width: template.exportWidth,
+      height: template.exportHeight,
     });
 
     if (!blob) {
@@ -715,8 +804,8 @@ export default function Home() {
 
     const filename =
       mode === "all"
-        ? `${exportBaseName}-screen-${String(assetIndex).padStart(2, "0")}.png`
-        : `${exportBaseName}-selected-${String(assetIndex).padStart(2, "0")}.png`;
+        ? `${exportBaseName(template)}-screen-${String(assetIndex).padStart(2, "0")}.png`
+        : `${exportBaseName(template)}-selected-${String(assetIndex).padStart(2, "0")}.png`;
 
     return {
       blob,
@@ -725,7 +814,11 @@ export default function Home() {
     };
   }
 
-  async function exportAssetIds(assetIds: string[], mode: "selected" | "all") {
+  async function exportAssetIds(
+    assetIds: string[],
+    mode: "selected" | "all",
+    template: IosTemplate,
+  ) {
     if (!assetIds.length) {
       return;
     }
@@ -735,7 +828,7 @@ export default function Home() {
     try {
       const renderedAssets = (
         await Promise.all(
-          assetIds.map((assetId) => renderAssetExport(assetId, mode)),
+          assetIds.map((assetId) => renderAssetExport(assetId, mode, template)),
         )
       ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
 
@@ -750,7 +843,7 @@ export default function Home() {
             bytes: asset.bytes,
           })),
         );
-        downloadBlob(zipBlob, `${exportBaseName}-screens.zip`);
+        downloadBlob(zipBlob, `${exportBaseName(template)}-screens.zip`);
         return;
       }
 
@@ -793,6 +886,7 @@ export default function Home() {
             alt="Zuddl"
             className="studio-header-logo"
           />
+          {renderDeviceMenu()}
         </header>
 
         <section className="studio-workspace">
@@ -1169,11 +1263,14 @@ export default function Home() {
                 sidePanelOpen ? "" : "studio-preview-panel-full"
               } ${previewPanelSelected ? "studio-preview-panel-selected" : ""}`}
               onClick={selectPreviewPanel}
+              hidden={activeDeviceSlug !== IOS_TEMPLATE.deviceSlug}
             >
               <div className="studio-preview-toolbar">
                 <div className="studio-preview-title-stack">
                   <p className="studio-preview-eyebrow">Preview</p>
-                  <h2 className="studio-preview-title">iOS (6.5 inch)</h2>
+                  <h2 className="studio-preview-title">
+                    {IOS_TEMPLATE.deviceLabel.replace("iOS ", "iOS (") + ")"}
+                  </h2>
                 </div>
 
                 <div className="studio-preview-actions">
@@ -1181,7 +1278,7 @@ export default function Home() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void exportAssetIds(selectedAssetIds, "selected");
+                      void exportAssetIds(selectedAssetIds, "selected", IOS_TEMPLATE);
                     }}
                     disabled={exportSelectedDisabled}
                     className="studio-button studio-button-primary"
@@ -1195,6 +1292,7 @@ export default function Home() {
                       void exportAssetIds(
                         assets.map((asset) => asset.id),
                         "all",
+                        IOS_TEMPLATE,
                       );
                     }}
                     disabled={downloadAllDisabled}
@@ -1273,6 +1371,7 @@ export default function Home() {
                             >
                               <IosStoreCanvas
                                 asset={asset}
+                                template={IOS_TEMPLATE}
                                 interactive
                                 scale={previewScale}
                                 isTitleEditing={editingTitleAssetId === asset.id}
@@ -1281,8 +1380,13 @@ export default function Home() {
                                     ? titleDraft
                                     : undefined
                                 }
-                                onTitleClick={() =>
-                                  startInlineTitleEdit(asset.id, asset.title)
+                                titleSelectionStart={titleSelectionStart}
+                                onTitleClick={(selectionStart) =>
+                                  startInlineTitleEdit(
+                                    asset.id,
+                                    asset.title,
+                                    selectionStart,
+                                  )
                                 }
                                 onTitleChange={setTitleDraft}
                                 onTitleBlur={commitInlineTitleEdit}
@@ -1327,6 +1431,181 @@ export default function Home() {
                               {isAddHoverVisible ? (
                                 <div className="studio-placeholder-card" aria-hidden="true">
                                   <div className="studio-placeholder-canvas-shell" />
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section
+              className={`studio-panel studio-preview-panel studio-preview-panel-5-5 ${
+                sidePanelOpen ? "studio-preview-panel-below" : "studio-preview-panel-full"
+              } ${previewPanelSelected ? "studio-preview-panel-selected" : ""}`}
+              onClick={selectPreviewPanel}
+              hidden={activeDeviceSlug !== IOS_5_5_TEMPLATE.deviceSlug}
+            >
+              <div className="studio-preview-toolbar">
+                <div className="studio-preview-title-stack">
+                  <p className="studio-preview-eyebrow">Preview</p>
+                  <h2 className="studio-preview-title">
+                    {IOS_5_5_TEMPLATE.deviceLabel.replace("iOS ", "iOS (") + ")"}
+                  </h2>
+                </div>
+
+                <div className="studio-preview-actions">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void exportAssetIds(
+                        selectedAssetIds,
+                        "selected",
+                        IOS_5_5_TEMPLATE,
+                      );
+                    }}
+                    disabled={exportSelectedDisabled}
+                    className="studio-button studio-button-primary"
+                  >
+                    {isExporting ? "Exporting..." : "Export"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void exportAssetIds(
+                        assets.map((asset) => asset.id),
+                        "all",
+                        IOS_5_5_TEMPLATE,
+                      );
+                    }}
+                    disabled={downloadAllDisabled}
+                    className="studio-button studio-button-secondary"
+                  >
+                    Download All
+                  </button>
+                </div>
+              </div>
+
+              <div className="studio-preview-stage-wrap">
+                <div className="studio-preview-stage">
+                  <div className="studio-asset-rail" onClick={selectPreviewPanel}>
+                    {assets.map((asset, index) => {
+                      const isSelected = selectedAssetIds.includes(asset.id);
+                      const isLastAsset = index === assets.length - 1;
+                      return (
+                        <div key={asset.id} className="studio-asset-cluster">
+                          <div
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const target = event.target as HTMLElement;
+                              if (target.closest("[data-upload-trigger='true']")) {
+                                setPreviewPanelSelected(false);
+                                setSelectedAssetIds([asset.id]);
+                                openUploadModal(asset.id, "screenshot");
+                                return;
+                              }
+                              selectAsset(asset.id, event.shiftKey);
+                            }}
+                            className={`studio-preview-card ${
+                              isSelected ? "studio-preview-frame-selected" : ""
+                            }`}
+                          >
+                            <div className="studio-preview-card-header">
+                              <span className="studio-preview-card-name">Screen {index + 1}</span>
+                              <div className="studio-card-actions">
+                                <button
+                                  type="button"
+                                  className="studio-icon-plain-button studio-icon-button-danger"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    deleteAsset(asset.id);
+                                  }}
+                                  disabled={assets.length <= 1}
+                                  aria-label={`Delete screen ${index + 1}`}
+                                >
+                                  <img src="/assets/icon-trash.svg" alt="" className="studio-icon" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="studio-icon-plain-button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    duplicateAsset(asset.id);
+                                  }}
+                                  aria-label={`Duplicate screen ${index + 1}`}
+                                >
+                                  <img src="/assets/icon-duplicate.svg" alt="" className="studio-icon" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div
+                              ref={index === 0 ? preview55TileRef : undefined}
+                              className="studio-preview-canvas-shell studio-preview-canvas-shell-5-5"
+                            >
+                              <IosStoreCanvas
+                                asset={asset}
+                                template={IOS_5_5_TEMPLATE}
+                                interactive
+                                scale={preview55Scale}
+                                isTitleEditing={editingTitleAssetId === asset.id}
+                                titleDraft={
+                                  editingTitleAssetId === asset.id ? titleDraft : undefined
+                                }
+                                titleSelectionStart={titleSelectionStart}
+                                onTitleClick={(selectionStart) =>
+                                  startInlineTitleEdit(
+                                    asset.id,
+                                  asset.title,
+                                  selectionStart,
+                                )
+                                }
+                                onTitleChange={setTitleDraft}
+                                onTitleBlur={commitInlineTitleEdit}
+                                onTitleKeyDown={handleInlineTitleKeyDown}
+                              />
+                            </div>
+                          </div>
+
+                          {isLastAsset ? (
+                            <div
+                              className="studio-add-connector-wrap"
+                              onMouseEnter={() => setIsAddHoverVisible(true)}
+                              onMouseLeave={() => setIsAddHoverVisible(false)}
+                            >
+                              <button
+                                type="button"
+                                className="studio-add-connector studio-add-connector-5-5"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  addAsset();
+                                  setIsAddHoverVisible(false);
+                                }}
+                                aria-label="Add screen"
+                              >
+                                <img
+                                  src={
+                                    isAddHoverVisible
+                                      ? "/assets/add-screen-plus.svg"
+                                      : "/assets/add-screen-dot.svg"
+                                  }
+                                  alt=""
+                                  className={
+                                    isAddHoverVisible
+                                      ? "studio-add-connector-plus"
+                                      : "studio-add-connector-dot"
+                                  }
+                                />
+                              </button>
+                              {isAddHoverVisible ? (
+                                <div className="studio-placeholder-card" aria-hidden="true">
+                                  <div className="studio-placeholder-canvas-shell studio-placeholder-canvas-shell-5-5" />
                                 </div>
                               ) : null}
                             </div>
@@ -1397,12 +1676,22 @@ export default function Home() {
       >
         {assets.map((asset) => (
           <div
-            key={asset.id}
+            key={`${IOS_TEMPLATE.deviceSlug}:${asset.id}`}
             ref={(node) => {
-              exportRefs.current[asset.id] = node;
+              exportRefs.current[`${IOS_TEMPLATE.deviceSlug}:${asset.id}`] = node;
             }}
           >
             <IosStoreCanvas asset={asset} />
+          </div>
+        ))}
+        {assets.map((asset) => (
+          <div
+            key={`${IOS_5_5_TEMPLATE.deviceSlug}:${asset.id}`}
+            ref={(node) => {
+              exportRefs.current[`${IOS_5_5_TEMPLATE.deviceSlug}:${asset.id}`] = node;
+            }}
+          >
+            <IosStoreCanvas asset={asset} template={IOS_5_5_TEMPLATE} />
           </div>
         ))}
       </div>

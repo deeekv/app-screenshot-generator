@@ -1,40 +1,84 @@
 "use client";
 
-import { CSSProperties, KeyboardEvent } from "react";
-import { IOS_TEMPLATE, type IosAssetState } from "@/lib/ios-template";
+import { CSSProperties, KeyboardEvent, MouseEvent, useEffect, useRef } from "react";
+import {
+  IOS_TEMPLATE,
+  type IosAssetState,
+  type IosTemplate,
+} from "@/lib/ios-template";
 
 type IosStoreCanvasProps = {
   asset: IosAssetState;
+  template?: IosTemplate;
   interactive?: boolean;
   scale?: number;
   isTitleEditing?: boolean;
   titleDraft?: string;
+  titleSelectionStart?: number;
   onTitleChange?: (value: string) => void;
-  onTitleClick?: () => void;
+  onTitleClick?: (selectionStart: number) => void;
   onTitleBlur?: () => void;
   onTitleKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
 };
 
 export function IosStoreCanvas({
   asset,
+  template = IOS_TEMPLATE,
   interactive = false,
   scale = 1,
   isTitleEditing = false,
   titleDraft,
+  titleSelectionStart = 0,
   onTitleChange,
   onTitleClick,
   onTitleBlur,
   onTitleKeyDown,
 }: IosStoreCanvasProps) {
+  const titleInputRef = useRef<HTMLTextAreaElement>(null);
   const shellStyle: CSSProperties = {
-    width: IOS_TEMPLATE.exportWidth,
-    height: IOS_TEMPLATE.exportHeight,
+    width: template.exportWidth,
+    height: template.exportHeight,
     transform: `scale(${scale})`,
     transformOrigin: "top left",
   };
 
-  const previewHeight = IOS_TEMPLATE.exportHeight * scale;
-  const previewWidth = IOS_TEMPLATE.exportWidth * scale;
+  const previewHeight = template.exportHeight * scale;
+  const previewWidth = template.exportWidth * scale;
+
+  useEffect(() => {
+    if (isTitleEditing && titleInputRef.current) {
+      titleInputRef.current.setSelectionRange(titleSelectionStart, titleSelectionStart);
+    }
+  }, [isTitleEditing, titleSelectionStart]);
+
+  function getTitleSelectionStart(event: MouseEvent<HTMLDivElement>) {
+    const titleElement = event.currentTarget;
+    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY);
+    const range = point
+      ? (() => {
+          const nextRange = document.createRange();
+          nextRange.setStart(point.offsetNode, point.offset);
+          return nextRange;
+        })()
+      : document.caretRangeFromPoint?.(event.clientX, event.clientY);
+
+    if (!range || !titleElement.contains(range.startContainer)) {
+      return asset.title.length;
+    }
+
+    const walker = document.createTreeWalker(titleElement, NodeFilter.SHOW_TEXT);
+    let selectionStart = 0;
+    let node = walker.nextNode();
+    while (node) {
+      if (node === range.startContainer) {
+        return selectionStart + range.startOffset;
+      }
+      selectionStart += node.textContent?.length ?? 0;
+      node = walker.nextNode();
+    }
+
+    return asset.title.length;
+  }
 
   return (
     <div
@@ -45,8 +89,8 @@ export function IosStoreCanvas({
         <div
           className="relative overflow-hidden bg-black"
           style={{
-            width: IOS_TEMPLATE.stage.width,
-            height: IOS_TEMPLATE.stage.height,
+            width: template.stage.width,
+            height: template.stage.height,
             backgroundColor: asset.baseColor,
           }}
         >
@@ -63,13 +107,13 @@ export function IosStoreCanvas({
                 aria-hidden="true"
                 className="pointer-events-none absolute"
                 style={{
-                  left: IOS_TEMPLATE.bottomGlow.left,
-                  bottom: IOS_TEMPLATE.bottomGlow.bottom,
-                  width: IOS_TEMPLATE.bottomGlow.width,
-                  height: IOS_TEMPLATE.bottomGlow.height,
+                  left: template.bottomGlow.left,
+                  bottom: template.bottomGlow.bottom,
+                  width: template.bottomGlow.width,
+                  height: template.bottomGlow.height,
                   borderRadius: "9999px",
                   background: `linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, ${asset.glowColor} 100%)`,
-                  filter: `blur(${IOS_TEMPLATE.bottomGlow.blur}px)`,
+                  filter: `blur(${template.bottomGlow.blur}px)`,
                   opacity: 0.95,
                 }}
               />
@@ -78,10 +122,10 @@ export function IosStoreCanvas({
                 aria-hidden="true"
                 className="pointer-events-none absolute overflow-visible"
                 style={{
-                  left: IOS_TEMPLATE.backgroundShape.left,
-                  top: IOS_TEMPLATE.backgroundShape.top,
-                  width: IOS_TEMPLATE.backgroundShape.width,
-                  height: IOS_TEMPLATE.backgroundShape.height,
+                  left: template.backgroundShape.left,
+                  top: template.backgroundShape.top,
+                  width: template.backgroundShape.width,
+                  height: template.backgroundShape.height,
                 }}
                 preserveAspectRatio="none"
                 viewBox="0 0 816.281 611.348"
@@ -124,24 +168,25 @@ export function IosStoreCanvas({
           <div
             className="absolute text-center"
             onClick={
-              interactive
+              interactive && !isTitleEditing
                 ? (event) => {
                     event.stopPropagation();
-                    onTitleClick?.();
+                    onTitleClick?.(getTitleSelectionStart(event));
                   }
                 : undefined
             }
             style={{
-              left: IOS_TEMPLATE.title.left,
-              top: IOS_TEMPLATE.title.top,
-              width: IOS_TEMPLATE.title.width,
-              minHeight: IOS_TEMPLATE.title.height,
+              left: template.title.left,
+              top: template.title.top,
+              width: template.title.width,
+              minHeight: template.title.height,
               cursor: interactive ? "text" : "default",
             }}
           >
             {isTitleEditing ? (
               <textarea
                 autoFocus
+                ref={titleInputRef}
                 value={titleDraft ?? asset.title}
                 onChange={(event) => onTitleChange?.(event.target.value)}
                 onBlur={onTitleBlur}
@@ -150,11 +195,11 @@ export function IosStoreCanvas({
                 style={{
                   margin: 0,
                   color: asset.titleColor,
-                  fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-                  fontSize: IOS_TEMPLATE.title.fontSize,
+                  fontFamily: 'Helvetica, Arial, sans-serif',
+                  fontSize: template.title.fontSize,
                   fontWeight: 700,
-                  lineHeight: `${IOS_TEMPLATE.title.lineHeight}px`,
-                  letterSpacing: IOS_TEMPLATE.title.letterSpacing,
+                  lineHeight: `${template.title.lineHeight}px`,
+                  letterSpacing: template.title.letterSpacing,
                   textAlign: "center",
                 }}
               />
@@ -163,11 +208,11 @@ export function IosStoreCanvas({
                 style={{
                   margin: 0,
                   color: asset.titleColor,
-                  fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-                  fontSize: IOS_TEMPLATE.title.fontSize,
+                  fontFamily: 'Helvetica, Arial, sans-serif',
+                  fontSize: template.title.fontSize,
                   fontWeight: 700,
-                  lineHeight: `${IOS_TEMPLATE.title.lineHeight}px`,
-                  letterSpacing: IOS_TEMPLATE.title.letterSpacing,
+                  lineHeight: `${template.title.lineHeight}px`,
+                  letterSpacing: template.title.letterSpacing,
                   textAlign: "center",
                 }}
               >
@@ -185,10 +230,10 @@ export function IosStoreCanvas({
             }
             data-upload-trigger={interactive ? "true" : undefined}
             style={{
-              left: IOS_TEMPLATE.screenshot.left,
-              top: IOS_TEMPLATE.screenshot.top,
-              width: IOS_TEMPLATE.screenshot.width,
-              height: IOS_TEMPLATE.screenshot.height,
+              left: template.screenshot.left,
+              top: template.screenshot.top,
+              width: template.screenshot.width,
+              height: template.screenshot.height,
               borderRadius: "40px",
               cursor: interactive ? "pointer" : "default",
             }}
@@ -213,10 +258,10 @@ export function IosStoreCanvas({
             aria-hidden="true"
             className="pointer-events-none absolute"
             style={{
-              left: IOS_TEMPLATE.deviceFrame.left,
-              top: IOS_TEMPLATE.deviceFrame.top,
-              width: IOS_TEMPLATE.deviceFrame.width,
-              height: IOS_TEMPLATE.deviceFrame.height,
+              left: template.deviceFrame.left,
+              top: template.deviceFrame.top,
+              width: template.deviceFrame.width,
+              height: template.deviceFrame.height,
             }}
             src="/assets/ios/frame.png"
           />
