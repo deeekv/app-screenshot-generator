@@ -17,11 +17,13 @@
 
 html {
   background: var(--page-bg);
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03), transparent 28%),
     linear-gradient(180deg, #0b0b0b 0%, #060606 100%);
@@ -112,6 +114,103 @@ textarea {
   padding-top: 2.6875em;
 }
 
+.studio-get-started {
+  position: fixed;
+  z-index: 25;
+  right: 2.5em;
+  bottom: 2em;
+  width: min(22em, calc(100vw - 5em));
+  padding: 1em;
+  border: 0.0625em solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.875em;
+  background: rgba(19, 19, 19, 0.97);
+  box-shadow: 0 1.25em 3em rgba(0, 0, 0, 0.42);
+  animation: studioGetStartedIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.studio-get-started-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.studio-get-started-eyebrow,
+.studio-get-started-progress,
+.studio-get-started-copy {
+  margin: 0;
+  font-family: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.studio-get-started-eyebrow {
+  color: #f7f4ef;
+  font-size: 0.875em;
+  font-weight: 600;
+}
+
+.studio-get-started-progress {
+  margin-top: 0.25em;
+  color: #a8a29e;
+  font-size: 0.6875em;
+}
+
+.studio-get-started-copy {
+  margin-top: 0.875em;
+  color: #e7e5e4;
+  font-size: 0.8125em;
+  line-height: 1.45;
+}
+
+.studio-get-started-close {
+  display: grid;
+  place-items: center;
+  width: 1.75em;
+  height: 1.75em;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a8a29e;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+}
+
+.studio-get-started-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.studio-get-started-steps {
+  display: flex;
+  gap: 0.375em;
+  margin-top: 1em;
+}
+
+.studio-get-started-steps span {
+  height: 0.1875em;
+  flex: 1;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 180ms ease;
+}
+
+.studio-get-started-steps .studio-get-started-step-active {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+@keyframes studioGetStartedIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.75em);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .studio-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -133,6 +232,10 @@ textarea {
   min-height: 54.3198242188em;
   padding: 1.3125em;
   background: linear-gradient(180deg, rgba(17, 17, 17, 0.84) 0%, rgba(17, 17, 17, 0.84) 100%);
+}
+
+.studio-mobile-drawer-backdrop {
+  display: none;
 }
 
 .studio-preview-panel {
@@ -656,6 +759,154 @@ textarea {
   outline-offset: 0.2em;
 }
 
+.studio-onboarding-device,
+.studio-onboarding-screen {
+  isolation: isolate;
+}
+
+.studio-onboarding-device::before,
+.studio-onboarding-screen::before {
+  position: absolute;
+  z-index: -1;
+  inset: -0.15625em;
+  padding: 0.125em;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--studio-onboarding-angle, 0deg),
+    #8b5cf6,
+    #c084fc,
+    rgba(255, 255, 255, 0.9),
+    #8b5cf6
+  );
+  content: "";
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: studioOnboardingStroke 2.8s linear infinite;
+  pointer-events: none;
+}
+
+.studio-onboarding-screen {
+  border-radius: 0.5em;
+}
+
+.studio-onboarding-screen::before {
+  z-index: 1;
+  inset: -0.0625em;
+  padding: 0.0625em;
+  border-radius: 0.5625em;
+  background: conic-gradient(
+    from var(--studio-onboarding-angle, 0deg),
+    rgba(255, 255, 255, 0.35),
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 255, 255, 0.35),
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 255, 255, 0.35)
+  );
+}
+
+.studio-onboarding-add {
+  position: relative;
+  isolation: isolate;
+}
+
+.studio-onboarding-add::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(139, 92, 246, 0.62);
+  box-shadow: 0 0 0.35em rgba(139, 92, 246, 0.65);
+  content: "";
+  animation: studioOnboardingPulse 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+@property --studio-onboarding-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes studioOnboardingStroke {
+  to {
+    --studio-onboarding-angle: 360deg;
+  }
+}
+
+@keyframes studioOnboardingPulse {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(0.95);
+  }
+
+  50% {
+    opacity: 0.62;
+    transform: scale(1.05);
+  }
+}
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  position: absolute;
+  z-index: 60;
+  bottom: calc(100% + 0.55em);
+  left: 50%;
+  width: max-content;
+  max-width: 15em;
+  padding: 0.5em 0.6875em;
+  border: 0.0625em solid rgba(255, 255, 255, 0.13);
+  border-radius: 0.375em;
+  background: rgba(24, 24, 24, 0.98);
+  box-shadow: 0 0.75em 1.75em rgba(0, 0, 0, 0.34);
+  color: #f7f4ef;
+  content: attr(data-tooltip);
+  font-family: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.75em;
+  font-weight: 500;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.25em);
+  transition: opacity 140ms ease, transform 140ms ease;
+  visibility: hidden;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.studio-nav-device-trigger[data-tooltip]::after {
+  top: calc(100% + 0.55em);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  transform: translate(0, -0.25em);
+}
+
+.studio-nav-device-trigger[data-tooltip]:hover::after,
+.studio-nav-device-trigger[data-tooltip]:focus-visible::after {
+  transform: translate(0, 0);
+}
+
+.studio-preview-card[data-tooltip]::after {
+  top: calc(100% + 0.4em);
+  bottom: auto;
+}
+
+.studio-add-connector[data-tooltip]::after {
+  bottom: calc(100% + 0.5em);
+}
+
 .studio-nav-device-trigger .studio-preview-device-chevron {
   width: 1em;
   height: 1em;
@@ -756,6 +1007,14 @@ textarea {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .studio-onboarding-device::before,
+  .studio-onboarding-screen::before,
+  .studio-onboarding-add::before {
+    animation: none;
+  }
+}
+
 .studio-preview-actions {
   display: flex;
   align-items: center;
@@ -809,6 +1068,12 @@ textarea {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.25em 0 0.5em;
+}
+
+/* The helper outline sits outside the card, so give its scroll container a
+   dedicated one-pixel-safe gutter instead of letting overflow clip it. */
+.studio-asset-rail-onboarding-screen {
+  padding: 0.375em 0.375em 0.625em;
 }
 
 .studio-asset-cluster,
@@ -1194,9 +1459,40 @@ textarea {
     overflow: visible;
   }
 
+  .studio-get-started {
+    right: 1em;
+    bottom: 1em;
+    width: min(22em, calc(100vw - 2em));
+  }
+
   .studio-side-menu {
+    position: fixed;
+    z-index: 51;
+    top: 0;
+    right: 0;
+    width: 80vw;
+    height: 100dvh;
     min-height: 0;
+    overflow-y: auto;
     padding: 1.125em;
+    border-radius: 1.25em 0 0 1.25em;
+    background: rgba(17, 17, 17, 0.98);
+    box-shadow: -1.5em 0 4em rgba(0, 0, 0, 0.5);
+    animation: studioMobileDrawerIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .studio-mobile-drawer-backdrop {
+    position: fixed;
+    z-index: 50;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.54);
+    backdrop-filter: blur(0.125em);
+    animation: studioMobileBackdropIn 180ms ease-out;
   }
 
   .studio-controls {
@@ -1283,5 +1579,27 @@ textarea {
   .studio-preview-stage-wrap {
     max-width: 100%;
     min-width: 0;
+  }
+}
+
+@keyframes studioMobileDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes studioMobileBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }

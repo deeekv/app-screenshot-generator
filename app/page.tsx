@@ -284,6 +284,8 @@ export default function Home() {
     IOS_TEMPLATE.deviceSlug,
   );
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false);
+  const [guideStep, setGuideStep] = useState(1);
+  const [isGuideVisible, setIsGuideVisible] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [pendingUploadName, setPendingUploadName] = useState<string | null>(null);
   const [editingTitleAssetId, setEditingTitleAssetId] = useState<string | null>(
@@ -328,7 +330,9 @@ export default function Home() {
       <div className="studio-device-menu studio-nav-device-menu">
         <button
           type="button"
-          className="studio-nav-device-trigger"
+          className={`studio-nav-device-trigger ${
+            isGuideVisible && guideStep === 3 ? "studio-onboarding-device" : ""
+          }`}
           aria-haspopup="menu"
           aria-expanded={isDeviceMenuOpen}
           onClick={(event) => {
@@ -363,6 +367,9 @@ export default function Home() {
                     event.stopPropagation();
                     setActiveDeviceSlug(device.deviceSlug);
                     setIsDeviceMenuOpen(false);
+                    if (guideStep === 3) {
+                      dismissGuide();
+                    }
                   }}
                 >
                   <span>{device.deviceLabel.replace("iOS ", "iOS (") + ")"}</span>
@@ -445,6 +452,15 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [redo, undo]);
+
+  useEffect(() => {
+    setIsGuideVisible(window.localStorage.getItem("studio-guide-dismissed") !== "true");
+  }, []);
+
+  function dismissGuide() {
+    setIsGuideVisible(false);
+    window.localStorage.setItem("studio-guide-dismissed", "true");
+  }
 
   useEffect(() => {
     function closeDeviceMenu(event: MouseEvent) {
@@ -556,6 +572,9 @@ export default function Home() {
 
       return [assetId];
     });
+    if (guideStep === 1) {
+      setGuideStep(2);
+    }
   }
 
   function addAsset() {
@@ -563,6 +582,9 @@ export default function Home() {
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
+    if (guideStep === 2) {
+      setGuideStep(3);
+    }
   }
 
   function duplicateAsset(assetId: string) {
@@ -890,9 +912,54 @@ export default function Home() {
         </header>
 
         <section className="studio-workspace">
+          {isGuideVisible ? (
+            <aside className="studio-get-started" aria-label="Get started guide">
+              <div className="studio-get-started-header">
+                <div>
+                  <p className="studio-get-started-eyebrow">Get started</p>
+                  <p className="studio-get-started-progress">Step {guideStep} of 3</p>
+                </div>
+                <button
+                  type="button"
+                  className="studio-get-started-close"
+                  onClick={dismissGuide}
+                  aria-label="Dismiss getting started guide"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p className="studio-get-started-copy">
+                {guideStep === 1
+                  ? "Select a screen to open its design controls."
+                  : guideStep === 2
+                    ? "Use the purple dot to add another screen."
+                    : "Switch device sizes from the menu in the top-right."}
+              </p>
+              <div className="studio-get-started-steps" aria-hidden="true">
+                {[1, 2, 3].map((step) => (
+                  <span
+                    key={step}
+                    className={step <= guideStep ? "studio-get-started-step-active" : ""}
+                  />
+                ))}
+              </div>
+            </aside>
+          ) : null}
           <div className="studio-grid">
             {sidePanelOpen ? (
-              <aside className="studio-panel studio-side-menu">
+              <>
+              <button
+                type="button"
+                className="studio-mobile-drawer-backdrop"
+                onClick={closeSidePanel}
+                aria-label="Close edit asset panel"
+              />
+              <aside
+                className="studio-panel studio-side-menu"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Edit asset"
+              >
                 <div className="studio-title-wrap">
                   <h1 className="studio-title">Edit asset</h1>
                   <button
@@ -1256,6 +1323,7 @@ export default function Home() {
                   </section>
                 </div>
               </aside>
+              </>
             ) : null}
 
               <section
@@ -1306,7 +1374,9 @@ export default function Home() {
               <div className="studio-preview-stage-wrap">
                 <div className="studio-preview-stage">
                   <div
-                    className="studio-asset-rail"
+                    className={`studio-asset-rail ${
+                      isGuideVisible && guideStep === 1 ? "studio-asset-rail-onboarding-screen" : ""
+                    }`}
                     onClick={selectPreviewPanel}
                   >
                     {assets.map((asset, index) => {
@@ -1330,6 +1400,10 @@ export default function Home() {
                             }}
                             className={`studio-preview-card ${
                               isSelected ? "studio-preview-frame-selected" : ""
+                            } ${
+                              isGuideVisible && guideStep === 1 && index === 0
+                                ? "studio-onboarding-screen"
+                                : ""
                             }`}
                           >
                             <div className="studio-preview-card-header">
@@ -1405,7 +1479,11 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className="studio-add-connector"
+                                className={`studio-add-connector ${
+                                  isGuideVisible && guideStep === 2
+                                    ? "studio-onboarding-add"
+                                    : ""
+                                }`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();
@@ -1494,7 +1572,12 @@ export default function Home() {
 
               <div className="studio-preview-stage-wrap">
                 <div className="studio-preview-stage">
-                  <div className="studio-asset-rail" onClick={selectPreviewPanel}>
+                  <div
+                    className={`studio-asset-rail ${
+                      isGuideVisible && guideStep === 1 ? "studio-asset-rail-onboarding-screen" : ""
+                    }`}
+                    onClick={selectPreviewPanel}
+                  >
                     {assets.map((asset, index) => {
                       const isSelected = selectedAssetIds.includes(asset.id);
                       const isLastAsset = index === assets.length - 1;
@@ -1514,6 +1597,10 @@ export default function Home() {
                             }}
                             className={`studio-preview-card ${
                               isSelected ? "studio-preview-frame-selected" : ""
+                            } ${
+                              isGuideVisible && guideStep === 1 && index === 0
+                                ? "studio-onboarding-screen"
+                                : ""
                             }`}
                           >
                             <div className="studio-preview-card-header">
@@ -1581,7 +1668,11 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className="studio-add-connector studio-add-connector-5-5"
+                                className={`studio-add-connector studio-add-connector-5-5 ${
+                                  isGuideVisible && guideStep === 2
+                                    ? "studio-onboarding-add"
+                                    : ""
+                                }`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();
