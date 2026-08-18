@@ -1,4 +1,6 @@
 export const IOS_TEMPLATE = {
+  deviceLabel: "iOS 6.5 inch",
+  deviceSlug: "ios-6-5-inch",
   exportWidth: 1242,
   exportHeight: 2688,
   previewScale: 0.24,
@@ -42,6 +44,54 @@ export const IOS_TEMPLATE = {
   },
 } as const;
 
+// The 5.5-inch Figma frame uses the same composition as 6.5-inch. Its device
+// artwork is a uniform 79.917% scale of the 6.5-inch device; text is unchanged.
+const IOS_5_5_DEVICE_SCALE = 749.811 / IOS_TEMPLATE.deviceFrame.width;
+
+export const IOS_5_5_TEMPLATE = {
+  ...IOS_TEMPLATE,
+  deviceLabel: "iOS 5.5 inch",
+  deviceSlug: "ios-5-5-inch",
+  exportHeight: 2208,
+  stage: {
+    width: 1242,
+    height: 2208,
+  },
+  screenshot: {
+    left:
+      (IOS_TEMPLATE.stage.width - IOS_TEMPLATE.deviceFrame.width * IOS_5_5_DEVICE_SCALE) /
+        2 +
+      (IOS_TEMPLATE.screenshot.left - IOS_TEMPLATE.deviceFrame.left) *
+        IOS_5_5_DEVICE_SCALE,
+    top:
+      512 +
+      (IOS_TEMPLATE.screenshot.top - IOS_TEMPLATE.deviceFrame.top) *
+        IOS_5_5_DEVICE_SCALE,
+    width: IOS_TEMPLATE.screenshot.width * IOS_5_5_DEVICE_SCALE,
+    height: IOS_TEMPLATE.screenshot.height * IOS_5_5_DEVICE_SCALE,
+  },
+  deviceFrame: {
+    ...IOS_TEMPLATE.deviceFrame,
+    left:
+      (IOS_TEMPLATE.stage.width - IOS_TEMPLATE.deviceFrame.width * IOS_5_5_DEVICE_SCALE) /
+      2,
+    top: 512,
+    width: IOS_TEMPLATE.deviceFrame.width * IOS_5_5_DEVICE_SCALE,
+    height: IOS_TEMPLATE.deviceFrame.height * IOS_5_5_DEVICE_SCALE,
+  },
+  backgroundShape: {
+    ...IOS_TEMPLATE.backgroundShape,
+    top: 780.307,
+    height: 2092.5,
+  },
+  bottomGlow: {
+    ...IOS_TEMPLATE.bottomGlow,
+    height: 772,
+  },
+} as const;
+
+export type IosTemplate = typeof IOS_TEMPLATE | typeof IOS_5_5_TEMPLATE;
+
 export type IosAssetState = {
   title: string;
   titleColor: string;
@@ -50,6 +100,9 @@ export type IosAssetState = {
   glowColor: string;
   backgroundImageSrc: string | null;
   backgroundImageName: string | null;
+  backgroundImagePositionX: number;
+  backgroundImagePositionY: number;
+  backgroundImageZoom: number;
   screenshotSrc: string;
   screenshotName: string | null;
 };
@@ -62,6 +115,9 @@ export const defaultIosAssetState: IosAssetState = {
   glowColor: "#6d2cd4",
   backgroundImageSrc: null,
   backgroundImageName: null,
+  backgroundImagePositionX: 0,
+  backgroundImagePositionY: 0,
+  backgroundImageZoom: 1,
   screenshotSrc: "/assets/ios/placeholder.png",
   screenshotName: null,
 };
