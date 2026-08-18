@@ -1692,13 +1692,7 @@ export default function Home() {
                         )}
                       </div>
 
-                      <div
-                        className={`studio-background-sync-row ${
-                          isGuideVisible && guideStep === 3
-                            ? "studio-onboarding-sync"
-                            : ""
-                        }`}
-                      >
+                      <div className="studio-background-sync-row">
                         <span className="studio-background-sync-copy">
                           <span className="studio-background-sync-title">
                             Keep backgrounds synced
@@ -1733,6 +1727,10 @@ export default function Home() {
                           className={`studio-sync-switch ${
                             keepBackgroundsSynced
                               ? "studio-sync-switch-on"
+                              : ""
+                          } ${
+                            isGuideVisible && guideStep === 3
+                              ? "studio-onboarding-sync"
                               : ""
                           }`}
                           role="switch"

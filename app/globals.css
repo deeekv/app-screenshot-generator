@@ -958,16 +958,14 @@ textarea {
 
 .studio-onboarding-device,
 .studio-onboarding-screen,
-.studio-onboarding-background,
-.studio-onboarding-sync {
+.studio-onboarding-background {
   position: relative;
   isolation: isolate;
 }
 
 .studio-onboarding-device::before,
 .studio-onboarding-screen::before,
-.studio-onboarding-background::before,
-.studio-onboarding-sync::before {
+.studio-onboarding-background::before {
   position: absolute;
   z-index: -1;
   inset: -0.15625em;
@@ -1017,16 +1015,8 @@ textarea {
   pointer-events: none;
 }
 
-.studio-onboarding-sync {
-  border-radius: 0.5em;
-}
-
-.studio-onboarding-sync::before {
-  z-index: 2;
-  inset: -0.1875em;
-  padding: 0.0625em;
-  border-radius: 0.625em;
-  pointer-events: none;
+.studio-onboarding-sync .studio-sync-switch-thumb {
+  animation: studioOnboardingKnobPulse 1.8s ease-out infinite;
 }
 
 .studio-onboarding-add {
@@ -1068,6 +1058,21 @@ textarea {
   50% {
     opacity: 0.62;
     transform: scale(1.05);
+  }
+}
+
+@keyframes studioOnboardingKnobPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0.0625em 0.1875em rgba(0, 0, 0, 0.34),
+      0 0 0 0 rgba(139, 92, 246, 0.52);
+  }
+
+  50% {
+    box-shadow:
+      0 0.0625em 0.1875em rgba(0, 0, 0, 0.34),
+      0 0 0 0.4em rgba(139, 92, 246, 0);
   }
 }
 
@@ -1233,8 +1238,11 @@ textarea {
   .studio-onboarding-device::before,
   .studio-onboarding-screen::before,
   .studio-onboarding-background::before,
-  .studio-onboarding-sync::before,
   .studio-onboarding-add::before {
+    animation: none;
+  }
+
+  .studio-onboarding-sync .studio-sync-switch-thumb {
     animation: none;
   }
 }
