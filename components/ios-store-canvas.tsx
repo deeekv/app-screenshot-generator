@@ -22,6 +22,7 @@ type IosStoreCanvasProps = {
   isTitleEditing?: boolean;
   titleDraft?: string;
   titleSelectionStart?: number;
+  showUploadCue?: boolean;
   onTitleChange?: (value: string) => void;
   onTitleClick?: (selectionStart: number) => void;
   onTitleBlur?: () => void;
@@ -36,6 +37,7 @@ export function IosStoreCanvas({
   isTitleEditing = false,
   titleDraft,
   titleSelectionStart = 0,
+  showUploadCue = false,
   onTitleChange,
   onTitleClick,
   onTitleBlur,
@@ -335,11 +337,22 @@ export function IosStoreCanvas({
                 className="block h-full w-full object-cover"
                 src={asset.screenshotSrc}
               />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition hover:bg-black/20 hover:opacity-100">
-                <span className="rounded-full border border-white/20 bg-black/70 px-7 py-3 text-[32px] font-semibold tracking-[0.08em] text-white">
-                  Upload
+              {!asset.screenshotName ? (
+                <span
+                  className={`ios-upload-placeholder-icon ${
+                    showUploadCue
+                      ? "ios-upload-placeholder-icon-onboarding"
+                      : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 64 64" fill="none">
+                    <path d="M32 40V14" />
+                    <path d="m21 25 11-11 11 11" />
+                    <path d="M15 38v9a5 5 0 0 0 5 5h24a5 5 0 0 0 5-5v-9" />
+                  </svg>
                 </span>
-              </div>
+              ) : null}
             </button>
           ) : (
             <div

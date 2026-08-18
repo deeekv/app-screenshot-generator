@@ -59,7 +59,7 @@ type HistoryState = {
   future: AssetItem[][];
 };
 
-type GuideStep = 1 | 2 | 3 | 4 | 5;
+type GuideStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
@@ -98,6 +98,14 @@ const DEFAULT_SCREEN_TITLES = [
   "View all\nsession details",
 ] as const;
 const NEW_SCREEN_TITLE = "Highlight another\napp feature";
+const GUIDE_COPY: Record<GuideStep, string> = {
+  1: "Select a screen to open its design controls.",
+  2: "Upload an app screenshot, or skip for now.",
+  3: "Configure a gradient or image for the background.",
+  4: "Turn on sync only if background changes should apply to every screen.",
+  5: "Use the purple dot to add a new screen.",
+  6: "Switch device sizes from the menu in the top-right.",
+};
 
 function createAsset(id: string, title = defaultIosAssetState.title): AssetItem {
   return {
@@ -485,7 +493,7 @@ export default function Home() {
         <button
           type="button"
           className={`studio-nav-device-trigger ${
-            isGuideVisible && guideStep === 5 ? "studio-onboarding-device" : ""
+            isGuideVisible && guideStep === 6 ? "studio-onboarding-device" : ""
           }`}
           aria-haspopup="menu"
           aria-expanded={isDeviceMenuOpen}
@@ -521,7 +529,7 @@ export default function Home() {
                     event.stopPropagation();
                     setActiveDeviceSlug(device.deviceSlug);
                     setIsDeviceMenuOpen(false);
-                    if (guideStep === 5) {
+                    if (guideStep === 6) {
                       dismissGuide();
                     }
                   }}
@@ -615,7 +623,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!isGuideVisible || guideStep !== 4) {
+    if (!isGuideVisible || guideStep !== 5) {
       return;
     }
 
@@ -811,9 +819,9 @@ export default function Home() {
   }
 
   function navigateGuide(nextStep: GuideStep) {
-    if (nextStep === 1 || nextStep === 4) {
+    if (nextStep === 1 || nextStep === 5) {
       closeSidePanel();
-    } else if (nextStep === 2 || nextStep === 3) {
+    } else if (nextStep === 2 || nextStep === 3 || nextStep === 4) {
       const targetAsset =
         assets.find((asset) => asset.id === guideAssetId) ?? assets[0];
       if (targetAsset) {
@@ -839,7 +847,7 @@ export default function Home() {
   }
 
   function handleGuideNext() {
-    if (guideStep === 5) {
+    if (guideStep === 6) {
       dismissGuide();
       return;
     }
@@ -847,6 +855,7 @@ export default function Home() {
     const canAdvance =
       guideStep === 2 ||
       guideStep === 3 ||
+      guideStep === 4 ||
       guideStep < furthestGuideStep;
     if (canAdvance) {
       advanceGuide((guideStep + 1) as GuideStep);
@@ -878,8 +887,8 @@ export default function Home() {
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
-    if (guideStep === 4) {
-      advanceGuide(5);
+    if (guideStep === 5) {
+      advanceGuide(6);
     }
   }
 
@@ -1098,6 +1107,9 @@ export default function Home() {
       }
       setSelectedAssetIds([uploadTarget.assetId]);
       setPreviewPanelSelected(false);
+      if (uploadTarget.kind === "screenshot" && guideStep === 2) {
+        advanceGuide(3);
+      }
       if (uploadTarget.kind === "backgroundImage") {
         setCropDraft({ positionX: 0, positionY: 0, zoom: 1 });
         setCropImageDimensions({ width: 0, height: 0 });
@@ -1362,6 +1374,7 @@ export default function Home() {
   const canGuideGoNext =
     guideStep === 2 ||
     guideStep === 3 ||
+    guideStep === 4 ||
     guideStep < furthestGuideStep;
   return (
     <main className="studio-shell text-stone-100">
@@ -1384,7 +1397,7 @@ export default function Home() {
               <div className="studio-get-started-header">
                 <div>
                   <p className="studio-get-started-eyebrow">Get started</p>
-                  <p className="studio-get-started-progress">Step {guideStep} of 5</p>
+                  <p className="studio-get-started-progress">Step {guideStep} of 6</p>
                 </div>
                 <button
                   type="button"
@@ -1396,17 +1409,9 @@ export default function Home() {
                 </button>
               </div>
               <p className="studio-get-started-copy">
-                {guideStep === 1
-                  ? "Select a screen to open its design controls."
-                  : guideStep === 2
-                    ? "Configure a gradient or image for the background."
-                    : guideStep === 3
-                      ? "Turn on sync only if background changes should apply to every screen."
-                      : guideStep === 4
-                        ? "Use the purple dot to add a new screen."
-                        : "Switch device sizes from the menu in the top-right."}
+                {GUIDE_COPY[guideStep]}
               </p>
-              {guideStep > 1 || canGuideGoNext || guideStep === 5 ? (
+              {guideStep > 1 || canGuideGoNext || guideStep === 6 ? (
                 <div className="studio-get-started-actions">
                   {guideStep > 1 ? (
                     <button
@@ -1417,19 +1422,19 @@ export default function Home() {
                       Back
                     </button>
                   ) : null}
-                  {guideStep === 5 || canGuideGoNext ? (
+                  {guideStep === 6 || canGuideGoNext ? (
                     <button
                       type="button"
                       className="studio-get-started-button studio-get-started-button-next"
                       onClick={handleGuideNext}
                     >
-                      {guideStep === 5 ? "Done" : "Next"}
+                      {guideStep === 6 ? "Done" : "Next"}
                     </button>
                   ) : null}
                 </div>
               ) : null}
               <div className="studio-get-started-steps" aria-hidden="true">
-                {[1, 2, 3, 4, 5].map((step) => (
+                {[1, 2, 3, 4, 5, 6].map((step) => (
                   <span
                     key={step}
                     className={step <= guideStep ? "studio-get-started-step-active" : ""}
@@ -1539,7 +1544,7 @@ export default function Home() {
 
                     <div
                       className={`studio-mode-panel ${
-                        isGuideVisible && guideStep === 2
+                        isGuideVisible && guideStep === 3
                           ? "studio-onboarding-background"
                           : ""
                       }`}
@@ -1792,7 +1797,7 @@ export default function Home() {
                               ? "studio-sync-switch-on"
                               : ""
                           } ${
-                            isGuideVisible && guideStep === 3
+                            isGuideVisible && guideStep === 4
                               ? "studio-onboarding-sync"
                               : ""
                           }`}
@@ -2017,6 +2022,12 @@ export default function Home() {
                                 template={IOS_TEMPLATE}
                                 interactive
                                 scale={previewScale}
+                                showUploadCue={
+                                  isGuideVisible &&
+                                  guideStep === 2 &&
+                                  asset.id === guideAssetId &&
+                                  !asset.screenshotName
+                                }
                                 isTitleEditing={editingTitleAssetId === asset.id}
                                 titleDraft={
                                   editingTitleAssetId === asset.id
@@ -2049,7 +2060,7 @@ export default function Home() {
                               <button
                                 type="button"
                                 className={`studio-add-connector ${
-                                  isGuideVisible && guideStep === 4
+                                  isGuideVisible && guideStep === 5
                                     ? "studio-onboarding-add"
                                     : ""
                                 }`}
@@ -2206,6 +2217,12 @@ export default function Home() {
                                 template={IOS_5_5_TEMPLATE}
                                 interactive
                                 scale={preview55Scale}
+                                showUploadCue={
+                                  isGuideVisible &&
+                                  guideStep === 2 &&
+                                  asset.id === guideAssetId &&
+                                  !asset.screenshotName
+                                }
                                 isTitleEditing={editingTitleAssetId === asset.id}
                                 titleDraft={
                                   editingTitleAssetId === asset.id ? titleDraft : undefined
@@ -2234,7 +2251,7 @@ export default function Home() {
                               <button
                                 type="button"
                                 className={`studio-add-connector studio-add-connector-5-5 ${
-                                  isGuideVisible && guideStep === 4
+                                  isGuideVisible && guideStep === 5
                                     ? "studio-onboarding-add"
                                     : ""
                                 }`}

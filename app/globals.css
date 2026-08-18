@@ -41,6 +41,62 @@ textarea {
   resize: none;
 }
 
+.ios-upload-placeholder-icon {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  isolation: isolate;
+  display: grid;
+  width: 9em;
+  height: 9em;
+  place-items: center;
+  border: 0.125em solid rgba(255, 255, 255, 0.26);
+  border-radius: 50%;
+  background: rgba(9, 9, 9, 0.72);
+  box-shadow: 0 0.75em 2em rgba(0, 0, 0, 0.42);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.ios-upload-placeholder-icon svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 4.75em;
+  height: 4.75em;
+  opacity: 0.86;
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 0.65em rgba(0, 0, 0, 0.6));
+  transition: opacity 160ms ease, transform 160ms ease, filter 160ms ease;
+}
+
+[data-upload-trigger="true"]:hover .ios-upload-placeholder-icon svg,
+[data-upload-trigger="true"]:focus-visible .ios-upload-placeholder-icon svg {
+  opacity: 1;
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 0.9em rgba(255, 255, 255, 0.2));
+}
+
+.ios-upload-placeholder-icon-onboarding svg {
+  opacity: 1;
+  filter: drop-shadow(0 0 1em rgba(196, 132, 252, 0.75));
+}
+
+.ios-upload-placeholder-icon-onboarding::before {
+  position: absolute;
+  z-index: -1;
+  inset: -1.75em;
+  border-radius: 50%;
+  background: rgba(139, 92, 246, 0.62);
+  filter: blur(1.35em);
+  content: "";
+  animation: studioOnboardingPulse 1.8s ease-out infinite;
+}
+
 .grain {
   position: fixed;
   inset: 0;
@@ -1248,7 +1304,8 @@ textarea {
   .studio-onboarding-device::before,
   .studio-onboarding-screen::before,
   .studio-onboarding-background::before,
-  .studio-onboarding-add::before {
+  .studio-onboarding-add::before,
+  .ios-upload-placeholder-icon-onboarding::before {
     animation: none;
   }
 
