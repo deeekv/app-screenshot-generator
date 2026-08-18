@@ -3,6 +3,7 @@
 import {
   ChangeEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -29,16 +30,76 @@ type UploadTarget = {
   kind: "screenshot" | "backgroundImage";
 };
 
+type BackgroundCropDraft = {
+  positionX: number;
+  positionY: number;
+  zoom: number;
+};
+
+type BackgroundStyle = Pick<
+  IosAssetState,
+  | "backgroundMode"
+  | "baseColor"
+  | "glowColor"
+  | "backgroundImageSrc"
+  | "backgroundImageName"
+  | "backgroundImagePositionX"
+  | "backgroundImagePositionY"
+  | "backgroundImageZoom"
+>;
+
+type CropViewportSize = {
+  width: number;
+  height: number;
+};
+
 type HistoryState = {
   past: AssetItem[][];
   present: AssetItem[];
   future: AssetItem[][];
 };
 
-function createAsset(id: string): AssetItem {
+const MIN_BACKGROUND_ZOOM = 1;
+const MAX_BACKGROUND_ZOOM = 3;
+const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
+  "backgroundMode",
+  "baseColor",
+  "glowColor",
+  "backgroundImageSrc",
+  "backgroundImageName",
+  "backgroundImagePositionX",
+  "backgroundImagePositionY",
+  "backgroundImageZoom",
+]);
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function getBackgroundStyle(asset: IosAssetState): BackgroundStyle {
+  return {
+    backgroundMode: asset.backgroundMode,
+    baseColor: asset.baseColor,
+    glowColor: asset.glowColor,
+    backgroundImageSrc: asset.backgroundImageSrc,
+    backgroundImageName: asset.backgroundImageName,
+    backgroundImagePositionX: asset.backgroundImagePositionX,
+    backgroundImagePositionY: asset.backgroundImagePositionY,
+    backgroundImageZoom: asset.backgroundImageZoom,
+  };
+}
+
+const DEFAULT_SCREEN_TITLES = [
+  defaultIosAssetState.title,
+  "View the\nevent schedule",
+  "View all\nsession details",
+] as const;
+
+function createAsset(id: string, title = defaultIosAssetState.title): AssetItem {
   return {
     ...defaultIosAssetState,
     id,
+    title,
   };
 }
 
@@ -259,20 +320,47 @@ async function waitForNodeImages(node: HTMLElement) {
 }
 
 export default function Home() {
-  const idSeedRef = useRef(2);
+  const idSeedRef = useRef(DEFAULT_SCREEN_TITLES.length + 1);
   const exportRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const previewTileRef = useRef<HTMLDivElement>(null);
   const preview55TileRef = useRef<HTMLDivElement>(null);
+  const cropViewportRef = useRef<HTMLDivElement>(null);
+  const cropDragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startPositionX: number;
+    startPositionY: number;
+    horizontalTravel: number;
+    verticalTravel: number;
+  } | null>(null);
 
-  const [history, setHistory] = useState<HistoryState>({
+  const [history, setHistory] = useState<HistoryState>(() => ({
     past: [],
-    present: [createAsset("asset-1")],
+    present: DEFAULT_SCREEN_TITLES.map((title, index) =>
+      createAsset(`asset-${index + 1}`, title),
+    ),
     future: [],
-  });
+  }));
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [previewPanelSelected, setPreviewPanelSelected] = useState(true);
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [keepBackgroundsSynced, setKeepBackgroundsSynced] = useState(true);
+  const [cropAssetId, setCropAssetId] = useState<string | null>(null);
+  const [cropDraft, setCropDraft] = useState<BackgroundCropDraft>({
+    positionX: 0,
+    positionY: 0,
+    zoom: 1,
+  });
+  const [cropImageDimensions, setCropImageDimensions] = useState({
+    width: 0,
+    height: 0,
+  });
+  const [cropViewportSize, setCropViewportSize] = useState<CropViewportSize>({
+    width: 0,
+    height: 0,
+  });
   const [isAddHoverVisible, setIsAddHoverVisible] = useState(false);
   const [previewScale, setPreviewScale] = useState<number>(
     IOS_TEMPLATE.previewScale,
@@ -315,6 +403,64 @@ export default function Home() {
 
   const editableAsset =
     selectedAssetIds.length === 1 ? primarySelectedAsset : null;
+
+  const activeTemplate =
+    activeDeviceSlug === IOS_5_5_TEMPLATE.deviceSlug
+      ? IOS_5_5_TEMPLATE
+      : IOS_TEMPLATE;
+
+  const cropAsset = useMemo(
+    () => assets.find((asset) => asset.id === cropAssetId) ?? null,
+    [assets, cropAssetId],
+  );
+
+  const cropGeometry = useMemo(() => {
+    if (
+      !cropViewportSize.width ||
+      !cropViewportSize.height ||
+      !cropImageDimensions.width ||
+      !cropImageDimensions.height
+    ) {
+      return null;
+    }
+
+    const frameScale = Math.min(
+      (cropViewportSize.height - 2) / activeTemplate.stage.height,
+      (cropViewportSize.width * 0.55) / activeTemplate.stage.width,
+    );
+    const frameWidth = activeTemplate.stage.width * frameScale;
+    const frameHeight = activeTemplate.stage.height * frameScale;
+    const coverScale = Math.max(
+      frameWidth / cropImageDimensions.width,
+      frameHeight / cropImageDimensions.height,
+    );
+    const renderedWidth =
+      cropImageDimensions.width * coverScale * cropDraft.zoom;
+    const renderedHeight =
+      cropImageDimensions.height * coverScale * cropDraft.zoom;
+    const horizontalTravel = Math.max(0, (renderedWidth - frameWidth) / 2);
+    const verticalTravel = Math.max(0, (renderedHeight - frameHeight) / 2);
+
+    return {
+      frameLeft: (cropViewportSize.width - frameWidth) / 2,
+      frameTop: (cropViewportSize.height - frameHeight) / 2,
+      frameWidth,
+      frameHeight,
+      renderedWidth,
+      renderedHeight,
+      imageCenterX:
+        cropViewportSize.width / 2 + cropDraft.positionX * horizontalTravel,
+      imageCenterY:
+        cropViewportSize.height / 2 + cropDraft.positionY * verticalTravel,
+      horizontalTravel,
+      verticalTravel,
+    };
+  }, [
+    activeTemplate,
+    cropDraft,
+    cropImageDimensions,
+    cropViewportSize,
+  ]);
 
   function exportBaseName(template: IosTemplate) {
     return [slugify(exportProjectName), template.deviceSlug].filter(Boolean).join("-");
@@ -504,6 +650,38 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const viewport = cropViewportRef.current;
+    if (!viewport || !cropAssetId) {
+      return;
+    }
+
+    const updateSize = () => {
+      const bounds = viewport.getBoundingClientRect();
+      setCropViewportSize({ width: bounds.width, height: bounds.height });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [cropAssetId]);
+
+  useEffect(() => {
+    if (!cropAssetId) {
+      return;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCropAssetId(null);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [cropAssetId]);
+
+  useEffect(() => {
     setSelectedAssetIds((current) =>
       current.filter((id) => assets.some((asset) => asset.id === id)),
     );
@@ -543,11 +721,39 @@ export default function Home() {
     key: K,
     value: IosAssetState[K],
   ) {
+    const shouldSyncBackground =
+      keepBackgroundsSynced && BACKGROUND_STYLE_KEYS.has(key);
     commitAssets((current) =>
       current.map((asset) =>
-        asset.id === assetId ? { ...asset, [key]: value } : asset,
+        shouldSyncBackground || asset.id === assetId
+          ? { ...asset, [key]: value }
+          : asset,
       ),
     );
+  }
+
+  function updateBackgroundStyle(
+    assetId: string,
+    patch: Partial<BackgroundStyle>,
+  ) {
+    commitAssets((current) =>
+      current.map((asset) =>
+        keepBackgroundsSynced || asset.id === assetId
+          ? { ...asset, ...patch }
+          : asset,
+      ),
+    );
+  }
+
+  function toggleBackgroundSync() {
+    const nextSyncState = !keepBackgroundsSynced;
+    if (nextSyncState && editableAsset) {
+      const sharedBackground = getBackgroundStyle(editableAsset);
+      commitAssets((current) =>
+        current.map((asset) => ({ ...asset, ...sharedBackground })),
+      );
+    }
+    setKeepBackgroundsSynced(nextSyncState);
   }
 
   function selectPreviewPanel() {
@@ -579,6 +785,9 @@ export default function Home() {
 
   function addAsset() {
     const newAsset = createAsset(nextId());
+    if (keepBackgroundsSynced && assets[0]) {
+      Object.assign(newAsset, getBackgroundStyle(assets[0]));
+    }
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
@@ -649,6 +858,124 @@ export default function Home() {
     setPendingUploadName(null);
   }
 
+  function openBackgroundCrop(asset: AssetItem) {
+    if (!asset.backgroundImageSrc) {
+      return;
+    }
+
+    setCropDraft({
+      positionX: asset.backgroundImagePositionX,
+      positionY: asset.backgroundImagePositionY,
+      zoom: asset.backgroundImageZoom,
+    });
+    setCropImageDimensions({ width: 0, height: 0 });
+    setCropAssetId(asset.id);
+  }
+
+  function closeBackgroundCrop() {
+    cropDragRef.current = null;
+    setCropAssetId(null);
+  }
+
+  function updateCropZoom(nextZoom: number) {
+    setCropDraft((current) => ({
+      ...current,
+      zoom: clamp(nextZoom, MIN_BACKGROUND_ZOOM, MAX_BACKGROUND_ZOOM),
+    }));
+  }
+
+  function resetBackgroundCrop() {
+    setCropDraft({ positionX: 0, positionY: 0, zoom: 1 });
+  }
+
+  function applyBackgroundCrop() {
+    if (!cropAssetId) {
+      return;
+    }
+
+    updateBackgroundStyle(cropAssetId, {
+      backgroundImagePositionX: cropDraft.positionX,
+      backgroundImagePositionY: cropDraft.positionY,
+      backgroundImageZoom: cropDraft.zoom,
+    });
+    closeBackgroundCrop();
+  }
+
+  function handleCropPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!cropGeometry) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    cropDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPositionX: cropDraft.positionX,
+      startPositionY: cropDraft.positionY,
+      horizontalTravel: cropGeometry.horizontalTravel,
+      verticalTravel: cropGeometry.verticalTravel,
+    };
+  }
+
+  function handleCropPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const horizontalDelta = event.clientX - drag.startClientX;
+    const verticalDelta = event.clientY - drag.startClientY;
+    setCropDraft((current) => ({
+      ...current,
+      positionX: drag.horizontalTravel
+        ? clamp(
+            drag.startPositionX + horizontalDelta / drag.horizontalTravel,
+            -1,
+            1,
+          )
+        : 0,
+      positionY: drag.verticalTravel
+        ? clamp(
+            drag.startPositionY + verticalDelta / drag.verticalTravel,
+            -1,
+            1,
+          )
+        : 0,
+    }));
+  }
+
+  function handleCropPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (cropDragRef.current?.pointerId === event.pointerId) {
+      cropDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    }
+  }
+
+  function handleCropKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 0.12 : 0.04;
+    let movementX = 0;
+    let movementY = 0;
+
+    if (event.key === "ArrowLeft") movementX = -step;
+    if (event.key === "ArrowRight") movementX = step;
+    if (event.key === "ArrowUp") movementY = -step;
+    if (event.key === "ArrowDown") movementY = step;
+    if (!movementX && !movementY) {
+      return;
+    }
+
+    event.preventDefault();
+    setCropDraft((current) => ({
+      ...current,
+      positionX: clamp(current.positionX + movementX, -1, 1),
+      positionY: clamp(current.positionY + movementY, -1, 1),
+    }));
+  }
+
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !uploadTarget) {
@@ -660,26 +987,35 @@ export default function Home() {
     try {
       const dataUrl = await fileToDataUrl(file);
 
-      commitAssets((current) =>
-        current.map((asset) =>
-          asset.id === uploadTarget.assetId
-            ? uploadTarget.kind === "backgroundImage"
+      if (uploadTarget.kind === "backgroundImage") {
+        updateBackgroundStyle(uploadTarget.assetId, {
+          backgroundMode: "image",
+          backgroundImageSrc: dataUrl,
+          backgroundImageName: file.name,
+          backgroundImagePositionX: 0,
+          backgroundImagePositionY: 0,
+          backgroundImageZoom: 1,
+        });
+      } else {
+        commitAssets((current) =>
+          current.map((asset) =>
+            asset.id === uploadTarget.assetId
               ? {
-                  ...asset,
-                  backgroundMode: "image",
-                  backgroundImageSrc: dataUrl,
-                  backgroundImageName: file.name,
-                }
-              : {
                   ...asset,
                   screenshotSrc: dataUrl,
                   screenshotName: file.name,
                 }
-            : asset,
-        ),
-      );
+              : asset,
+          ),
+        );
+      }
       setSelectedAssetIds([uploadTarget.assetId]);
       setPreviewPanelSelected(false);
+      if (uploadTarget.kind === "backgroundImage") {
+        setCropDraft({ positionX: 0, positionY: 0, zoom: 1 });
+        setCropImageDimensions({ width: 0, height: 0 });
+        setCropAssetId(uploadTarget.assetId);
+      }
       closeUploadModal();
     } catch (error) {
       console.error("File upload failed", error);
@@ -759,26 +1095,21 @@ export default function Home() {
     assetId: string,
     mode: IosAssetState["backgroundMode"],
   ) {
-    commitAssets((current) =>
-      current.map((asset) =>
-        asset.id === assetId ? { ...asset, backgroundMode: mode } : asset,
-      ),
-    );
+    updateAsset(assetId, "backgroundMode", mode);
   }
 
   function clearBackgroundImage(assetId: string) {
-    commitAssets((current) =>
-      current.map((asset) =>
-        asset.id === assetId
-          ? {
-              ...asset,
-              backgroundMode: "gradient",
-              backgroundImageSrc: null,
-              backgroundImageName: null,
-            }
-          : asset,
-      ),
-    );
+    updateBackgroundStyle(assetId, {
+      backgroundMode: "gradient",
+      backgroundImageSrc: null,
+      backgroundImageName: null,
+      backgroundImagePositionX: 0,
+      backgroundImagePositionY: 0,
+      backgroundImageZoom: 1,
+    });
+    if (cropAssetId === assetId) {
+      closeBackgroundCrop();
+    }
   }
 
   function clearScreenshot(assetId: string) {
@@ -1098,60 +1429,80 @@ export default function Home() {
 
                       <div className="studio-background-mode-body">
                         {editableAsset!.backgroundMode === "image" ? (
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            onClick={() =>
-                              openUploadModal(editableAsset!.id, "backgroundImage")
-                            }
-                            onKeyDown={(event) =>
-                              triggerClickablePanel(event, () =>
-                                openUploadModal(editableAsset!.id, "backgroundImage"),
-                              )
-                            }
-                            className="studio-background-upload-row"
-                          >
-                            <span className="studio-background-upload-copy">
-                              {editableAsset!.backgroundImageName
-                                ? "Background image"
-                                : "Upload background image"}
-                            </span>
-                            <span className="studio-upload-icon" aria-hidden="true">
-                              {editableAsset!.backgroundImageSrc ? (
-                                <span className="studio-upload-thumb-wrap">
-                                  <img
-                                    src={editableAsset!.backgroundImageSrc}
-                                    alt=""
-                                    className="studio-upload-thumb"
-                                  />
-                                  <button
-                                    type="button"
-                                    className="studio-upload-thumb-remove"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      clearBackgroundImage(editableAsset!.id);
-                                    }}
-                                    data-tooltip="Remove file"
-                                    title="Remove file"
-                                    aria-label="Remove file"
-                                  >
-                                    <span
-                                      className="studio-upload-thumb-remove-icon"
-                                      aria-hidden="true"
+                          <div className="studio-background-image-controls">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() =>
+                                openUploadModal(editableAsset!.id, "backgroundImage")
+                              }
+                              onKeyDown={(event) =>
+                                triggerClickablePanel(event, () =>
+                                  openUploadModal(editableAsset!.id, "backgroundImage"),
+                                )
+                              }
+                              className="studio-background-upload-row"
+                            >
+                              <span className="studio-background-upload-copy">
+                                {editableAsset!.backgroundImageName
+                                  ? "Background image"
+                                  : "Upload background image"}
+                              </span>
+                              <span className="studio-upload-icon" aria-hidden="true">
+                                {editableAsset!.backgroundImageSrc ? (
+                                  <span className="studio-upload-thumb-wrap">
+                                    <img
+                                      src={editableAsset!.backgroundImageSrc}
+                                      alt=""
+                                      className="studio-upload-thumb"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="studio-upload-thumb-remove"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        clearBackgroundImage(editableAsset!.id);
+                                      }}
+                                      data-tooltip="Remove file"
+                                      title="Remove file"
+                                      aria-label="Remove file"
                                     >
-                                      <span className="studio-panel-close-line" />
-                                      <span className="studio-panel-close-line" />
-                                    </span>
-                                  </button>
-                                </span>
-                              ) : (
-                                <img
-                                  src="/assets/upload-combined.svg"
-                                  alt=""
-                                  className="studio-upload-icon-combined"
-                                />
-                              )}
-                            </span>
+                                      <span
+                                        className="studio-upload-thumb-remove-icon"
+                                        aria-hidden="true"
+                                      >
+                                        <span className="studio-panel-close-line" />
+                                        <span className="studio-panel-close-line" />
+                                      </span>
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <img
+                                    src="/assets/upload-combined.svg"
+                                    alt=""
+                                    className="studio-upload-icon-combined"
+                                  />
+                                )}
+                              </span>
+                            </div>
+
+                            {editableAsset!.backgroundImageSrc ? (
+                              <button
+                                type="button"
+                                className="studio-adjust-crop-button"
+                                onClick={() => openBackgroundCrop(editableAsset!)}
+                              >
+                                <svg
+                                  aria-hidden="true"
+                                  viewBox="0 0 20 20"
+                                  fill="none"
+                                >
+                                  <path d="M6 2.5v11a.5.5 0 0 0 .5.5h11" />
+                                  <path d="M2.5 6H14a.5.5 0 0 1 .5.5.5V18" />
+                                </svg>
+                                Adjust crop
+                              </button>
+                            ) : null}
                           </div>
                         ) : (
                           <>
@@ -1234,6 +1585,32 @@ export default function Home() {
                             </div>
                           </>
                         )}
+                      </div>
+
+                      <div className="studio-background-sync-row">
+                        <span className="studio-background-sync-copy">
+                          <span className="studio-background-sync-title">
+                            Keep backgrounds synced
+                          </span>
+                          <span className="studio-background-sync-description">
+                            Apply changes to every screen and reuse this
+                            background on new screens.
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className={`studio-sync-switch ${
+                            keepBackgroundsSynced
+                              ? "studio-sync-switch-on"
+                              : ""
+                          }`}
+                          role="switch"
+                          aria-checked={keepBackgroundsSynced}
+                          aria-label="Keep backgrounds synced"
+                          onClick={toggleBackgroundSync}
+                        >
+                          <span className="studio-sync-switch-thumb" />
+                        </button>
                       </div>
                     </div>
                   </section>
@@ -1711,6 +2088,170 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {cropAsset?.backgroundImageSrc ? (
+        <div className="studio-modal-backdrop studio-crop-backdrop" onClick={closeBackgroundCrop}>
+          <div
+            className="studio-crop-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="studio-crop-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="studio-modal-header">
+              <div>
+                <h3 className="studio-modal-title" id="studio-crop-title">
+                  Adjust background image
+                </h3>
+                <p className="studio-crop-subtitle">
+                  Position the image for {activeTemplate.deviceLabel}.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="studio-modal-close"
+                onClick={closeBackgroundCrop}
+                aria-label="Close crop editor"
+              >
+                <span className="studio-panel-close-icon" aria-hidden="true">
+                  <span className="studio-panel-close-line" />
+                  <span className="studio-panel-close-line" />
+                </span>
+              </button>
+            </div>
+
+            <div
+              ref={cropViewportRef}
+              className={`studio-crop-viewport ${
+                cropDragRef.current ? "studio-crop-viewport-dragging" : ""
+              }`}
+              role="application"
+              tabIndex={0}
+              aria-label="Background image crop area"
+              aria-describedby="studio-crop-help"
+              onPointerDown={handleCropPointerDown}
+              onPointerMove={handleCropPointerMove}
+              onPointerUp={handleCropPointerEnd}
+              onPointerCancel={handleCropPointerEnd}
+              onLostPointerCapture={() => {
+                cropDragRef.current = null;
+              }}
+              onKeyDown={handleCropKeyDown}
+            >
+              <img
+                key={cropAsset.backgroundImageSrc}
+                src={cropAsset.backgroundImageSrc}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="studio-crop-source-image"
+                onLoad={(event) => {
+                  setCropImageDimensions({
+                    width: event.currentTarget.naturalWidth,
+                    height: event.currentTarget.naturalHeight,
+                  });
+                }}
+                style={
+                  cropGeometry
+                    ? {
+                        left: cropGeometry.imageCenterX,
+                        top: cropGeometry.imageCenterY,
+                        width: cropGeometry.renderedWidth,
+                        height: cropGeometry.renderedHeight,
+                      }
+                    : undefined
+                }
+              />
+
+              {cropGeometry ? (
+                <div
+                  className="studio-crop-frame"
+                  style={{
+                    left: cropGeometry.frameLeft,
+                    top: cropGeometry.frameTop,
+                    width: cropGeometry.frameWidth,
+                    height: cropGeometry.frameHeight,
+                  }}
+                >
+                  <div className="studio-crop-drag-hint" id="studio-crop-help">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2v20M2 12h20M12 2 9 5m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3M22 12l-3-3m3 3-3 3" />
+                    </svg>
+                    <span>Drag image to reposition</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="studio-crop-loading">Preparing image…</div>
+              )}
+            </div>
+
+            <div className="studio-crop-controls">
+              <span className="studio-crop-control-label">Zoom</span>
+              <button
+                type="button"
+                className="studio-crop-stepper"
+                onClick={() => updateCropZoom(cropDraft.zoom - 0.1)}
+                aria-label="Zoom out"
+                disabled={cropDraft.zoom <= MIN_BACKGROUND_ZOOM}
+              >
+                −
+              </button>
+              <input
+                className="studio-crop-range"
+                type="range"
+                min={MIN_BACKGROUND_ZOOM}
+                max={MAX_BACKGROUND_ZOOM}
+                step={0.01}
+                value={cropDraft.zoom}
+                onChange={(event) => updateCropZoom(Number(event.target.value))}
+                aria-label="Background image zoom"
+              />
+              <button
+                type="button"
+                className="studio-crop-stepper"
+                onClick={() => updateCropZoom(cropDraft.zoom + 0.1)}
+                aria-label="Zoom in"
+                disabled={cropDraft.zoom >= MAX_BACKGROUND_ZOOM}
+              >
+                +
+              </button>
+              <output className="studio-crop-zoom-value">
+                {Math.round(cropDraft.zoom * 100)}%
+              </output>
+            </div>
+
+            <div className="studio-crop-footer">
+              <button
+                type="button"
+                className="studio-crop-reset"
+                onClick={resetBackgroundCrop}
+              >
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                  <path d="M4.1 6.7A6.5 6.5 0 1 1 3.5 12" />
+                  <path d="M4 3v4h4" />
+                </svg>
+                Reset
+              </button>
+              <div className="studio-crop-actions">
+                <button
+                  type="button"
+                  className="studio-button studio-button-secondary"
+                  onClick={closeBackgroundCrop}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="studio-button studio-button-primary"
+                  onClick={applyBackgroundCrop}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isUploadModalOpen ? (
         <div className="studio-modal-backdrop" onClick={closeUploadModal}>

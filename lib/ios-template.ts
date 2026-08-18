@@ -100,6 +100,9 @@ export type IosAssetState = {
   glowColor: string;
   backgroundImageSrc: string | null;
   backgroundImageName: string | null;
+  backgroundImagePositionX: number;
+  backgroundImagePositionY: number;
+  backgroundImageZoom: number;
   screenshotSrc: string;
   screenshotName: string | null;
 };
@@ -112,6 +115,9 @@ export const defaultIosAssetState: IosAssetState = {
   glowColor: "#6d2cd4",
   backgroundImageSrc: null,
   backgroundImageName: null,
+  backgroundImagePositionX: 0,
+  backgroundImagePositionY: 0,
+  backgroundImageZoom: 1,
   screenshotSrc: "/assets/ios/placeholder.png",
   screenshotName: null,
 };

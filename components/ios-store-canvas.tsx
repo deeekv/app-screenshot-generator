@@ -1,6 +1,13 @@
 "use client";
 
-import { CSSProperties, KeyboardEvent, MouseEvent, useEffect, useRef } from "react";
+import {
+  CSSProperties,
+  KeyboardEvent,
+  MouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   IOS_TEMPLATE,
   type IosAssetState,
@@ -35,6 +42,11 @@ export function IosStoreCanvas({
   onTitleKeyDown,
 }: IosStoreCanvasProps) {
   const titleInputRef = useRef<HTMLTextAreaElement>(null);
+  const [backgroundImageInfo, setBackgroundImageInfo] = useState<{
+    src: string | null;
+    width: number;
+    height: number;
+  }>({ src: null, width: 0, height: 0 });
   const shellStyle: CSSProperties = {
     width: template.exportWidth,
     height: template.exportHeight,
@@ -45,11 +57,87 @@ export function IosStoreCanvas({
   const previewHeight = template.exportHeight * scale;
   const previewWidth = template.exportWidth * scale;
 
+  const backgroundImageDimensions =
+    backgroundImageInfo.src === asset.backgroundImageSrc
+      ? backgroundImageInfo
+      : { width: 0, height: 0 };
+  const backgroundZoom = Math.max(1, asset.backgroundImageZoom);
+  const backgroundImageStyle: CSSProperties = backgroundImageDimensions.width
+    ? (() => {
+        const coverScale = Math.max(
+          template.stage.width / backgroundImageDimensions.width,
+          template.stage.height / backgroundImageDimensions.height,
+        );
+        const renderedWidth =
+          backgroundImageDimensions.width * coverScale * backgroundZoom;
+        const renderedHeight =
+          backgroundImageDimensions.height * coverScale * backgroundZoom;
+        const horizontalTravel = Math.max(
+          0,
+          (renderedWidth - template.stage.width) / 2,
+        );
+        const verticalTravel = Math.max(
+          0,
+          (renderedHeight - template.stage.height) / 2,
+        );
+
+        return {
+          left:
+            template.stage.width / 2 +
+            asset.backgroundImagePositionX * horizontalTravel,
+          top:
+            template.stage.height / 2 +
+            asset.backgroundImagePositionY * verticalTravel,
+          width: renderedWidth,
+          height: renderedHeight,
+          maxWidth: "none",
+          transform: "translate(-50%, -50%)",
+        };
+      })()
+    : {
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+      };
+
   useEffect(() => {
     if (isTitleEditing && titleInputRef.current) {
       titleInputRef.current.setSelectionRange(titleSelectionStart, titleSelectionStart);
     }
   }, [isTitleEditing, titleSelectionStart]);
+
+  useEffect(() => {
+    const src = asset.backgroundImageSrc;
+    if (!src) {
+      return;
+    }
+
+    let isCurrent = true;
+    const image = new Image();
+    const updateDimensions = () => {
+      if (!isCurrent || !image.naturalWidth) {
+        return;
+      }
+
+      setBackgroundImageInfo({
+        src,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    };
+
+    image.addEventListener("load", updateDimensions);
+    image.src = src;
+    if (image.complete) {
+      updateDimensions();
+    }
+
+    return () => {
+      isCurrent = false;
+      image.removeEventListener("load", updateDimensions);
+    };
+  }, [asset.backgroundImageSrc]);
 
   function getTitleSelectionStart(event: MouseEvent<HTMLDivElement>) {
     const titleElement = event.currentTarget;
@@ -98,8 +186,10 @@ export function IosStoreCanvas({
             <img
               alt=""
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 block h-full w-full object-cover"
+              className="pointer-events-none absolute block"
               src={asset.backgroundImageSrc}
+              draggable={false}
+              style={backgroundImageStyle}
             />
           ) : (
             <>
