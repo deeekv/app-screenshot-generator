@@ -1612,11 +1612,30 @@ export default function Home() {
                           <span className="studio-background-sync-title">
                             Keep backgrounds synced
                           </span>
-                          <span className="studio-background-sync-description">
-                            {keepBackgroundsSynced
-                              ? "Changes apply to every screen and new screens inherit this background."
-                              : "Each screen keeps its own background until you turn this on."}
-                          </span>
+                          <button
+                            type="button"
+                            className="studio-background-sync-info"
+                            data-tooltip={
+                              keepBackgroundsSynced
+                                ? "Background changes apply to every screen, and new screens inherit this background."
+                                : "Turn this on to apply background changes to every screen and reuse them on new screens."
+                            }
+                            aria-label={
+                              keepBackgroundsSynced
+                                ? "Background sync is on. Changes apply to every screen and new screens."
+                                : "Background sync is off. Turn it on to apply changes to every screen and new screens."
+                            }
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                            >
+                              <circle cx="8" cy="8" r="6.25" />
+                              <path d="M8 7.25v3.5" />
+                              <path d="M8 5.15h.01" />
+                            </svg>
+                          </button>
                         </span>
                         <button
                           type="button"
