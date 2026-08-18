@@ -737,6 +737,10 @@ textarea {
   outline-offset: 0.125em;
 }
 
+.studio-background-sync-info::after {
+  text-align: left;
+}
+
 .studio-sync-switch {
   position: relative;
   flex: 0 0 auto;
