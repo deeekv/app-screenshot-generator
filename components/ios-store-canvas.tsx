@@ -315,37 +315,51 @@ export function IosStoreCanvas({
             )}
           </div>
 
-          <button
-            type="button"
-            className={
-              interactive
-                ? "absolute overflow-hidden border-0 bg-transparent p-0"
-                : "absolute overflow-hidden border-0 bg-transparent p-0 pointer-events-none"
-            }
-            data-upload-trigger={interactive ? "true" : undefined}
-            style={{
-              left: template.screenshot.left,
-              top: template.screenshot.top,
-              width: template.screenshot.width,
-              height: template.screenshot.height,
-              borderRadius: "40px",
-              cursor: interactive ? "pointer" : "default",
-            }}
-            aria-label="Upload screenshot"
-          >
-            <img
-              alt="Uploaded app screenshot"
-              className="block h-full w-full object-cover"
-              src={asset.screenshotSrc}
-            />
-            {interactive ? (
+          {interactive ? (
+            <button
+              type="button"
+              className="absolute overflow-hidden border-0 bg-transparent p-0"
+              data-upload-trigger="true"
+              style={{
+                left: template.screenshot.left,
+                top: template.screenshot.top,
+                width: template.screenshot.width,
+                height: template.screenshot.height,
+                borderRadius: "40px",
+                cursor: "pointer",
+              }}
+              aria-label="Upload screenshot"
+            >
+              <img
+                alt="Uploaded app screenshot"
+                className="block h-full w-full object-cover"
+                src={asset.screenshotSrc}
+              />
               <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition hover:bg-black/20 hover:opacity-100">
                 <span className="rounded-full border border-white/20 bg-black/70 px-7 py-3 text-[32px] font-semibold tracking-[0.08em] text-white">
                   Upload
                 </span>
               </div>
-            ) : null}
-          </button>
+            </button>
+          ) : (
+            <div
+              className="pointer-events-none absolute overflow-hidden"
+              aria-hidden="true"
+              style={{
+                left: template.screenshot.left,
+                top: template.screenshot.top,
+                width: template.screenshot.width,
+                height: template.screenshot.height,
+                borderRadius: "40px",
+              }}
+            >
+              <img
+                alt=""
+                className="block h-full w-full object-cover"
+                src={asset.screenshotSrc}
+              />
+            </div>
+          )}
 
           <img
             alt=""

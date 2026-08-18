@@ -63,6 +63,7 @@ type GuideStep = 1 | 2 | 3 | 4 | 5;
 
 const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
+const EXPORT_PICKER_THUMB_WIDTH = 116;
 const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
   "backgroundMode",
   "baseColor",
@@ -380,6 +381,8 @@ export default function Home() {
   const [guideAssetId, setGuideAssetId] = useState<string | null>(null);
   const [isGuideVisible, setIsGuideVisible] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportSelectionIds, setExportSelectionIds] = useState<string[]>([]);
   const [pendingUploadName, setPendingUploadName] = useState<string | null>(null);
   const [editingTitleAssetId, setEditingTitleAssetId] = useState<string | null>(
     null,
@@ -705,6 +708,21 @@ export default function Home() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [cropAssetId]);
+
+  useEffect(() => {
+    if (!isExportModalOpen || isExporting) {
+      return;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExportModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isExportModalOpen, isExporting]);
 
   useEffect(() => {
     setSelectedAssetIds((current) =>
@@ -1195,6 +1213,40 @@ export default function Home() {
     );
   }
 
+  function openExportModal() {
+    const availableSelectedIds = selectedAssetIds.filter((id) =>
+      assets.some((asset) => asset.id === id),
+    );
+    setExportSelectionIds(
+      availableSelectedIds.length > 0
+        ? availableSelectedIds
+        : assets.map((asset) => asset.id),
+    );
+    setIsExportModalOpen(true);
+  }
+
+  function closeExportModal() {
+    if (isExporting) {
+      return;
+    }
+
+    setIsExportModalOpen(false);
+  }
+
+  function toggleExportAsset(assetId: string) {
+    setExportSelectionIds((current) =>
+      current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId],
+    );
+  }
+
+  function toggleAllExportAssets() {
+    setExportSelectionIds((current) =>
+      current.length === assets.length ? [] : assets.map((asset) => asset.id),
+    );
+  }
+
   async function renderAssetExport(
     assetId: string,
     mode: "selected" | "all",
@@ -1289,7 +1341,18 @@ export default function Home() {
     }
   }
 
-  const exportSelectedDisabled = isExporting || selectedAssetIds.length === 0;
+  async function confirmExportSelection() {
+    if (!exportSelectionIds.length) {
+      return;
+    }
+
+    await exportAssetIds(exportSelectionIds, "selected", activeTemplate);
+    setIsExportModalOpen(false);
+  }
+
+  const exportButtonDisabled = isExporting || assets.length === 0;
+  const exportButtonLabel = isExporting ? "Exporting..." : "Export";
+  const allExportAssetsSelected = exportSelectionIds.length === assets.length;
   const downloadAllDisabled =
     isExporting || !previewPanelSelected || assets.length === 0;
   const deleteDisabled =
@@ -1852,12 +1915,12 @@ export default function Home() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void exportAssetIds(selectedAssetIds, "selected", IOS_TEMPLATE);
+                      openExportModal();
                     }}
-                    disabled={exportSelectedDisabled}
+                    disabled={exportButtonDisabled}
                     className="studio-button studio-button-primary"
                   >
-                    {isExporting ? "Exporting..." : "Export"}
+                    {exportButtonLabel}
                   </button>
                   <button
                     type="button"
@@ -2047,16 +2110,12 @@ export default function Home() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void exportAssetIds(
-                        selectedAssetIds,
-                        "selected",
-                        IOS_5_5_TEMPLATE,
-                      );
+                      openExportModal();
                     }}
-                    disabled={exportSelectedDisabled}
+                    disabled={exportButtonDisabled}
                     className="studio-button studio-button-primary"
                   >
-                    {isExporting ? "Exporting..." : "Export"}
+                    {exportButtonLabel}
                   </button>
                   <button
                     type="button"
@@ -2217,6 +2276,125 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {isExportModalOpen ? (
+        <div
+          className="studio-modal-backdrop studio-export-backdrop"
+          onClick={closeExportModal}
+        >
+          <div
+            className="studio-export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="studio-export-title"
+            aria-describedby="studio-export-description"
+            aria-busy={isExporting}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="studio-modal-header">
+              <div>
+                <h3 className="studio-modal-title" id="studio-export-title">
+                  Export screens
+                </h3>
+                <p
+                  className="studio-export-subtitle"
+                  id="studio-export-description"
+                >
+                  Choose which screens to export for {activeTemplate.deviceLabel}.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="studio-modal-close"
+                onClick={closeExportModal}
+                aria-label="Close export screen picker"
+                disabled={isExporting}
+              >
+                <span className="studio-panel-close-icon" aria-hidden="true">
+                  <span className="studio-panel-close-line" />
+                  <span className="studio-panel-close-line" />
+                </span>
+              </button>
+            </div>
+
+            <div className="studio-export-toolbar">
+              <span className="studio-export-selection-count" aria-live="polite">
+                {exportSelectionIds.length} of {assets.length} selected
+              </span>
+              <button
+                type="button"
+                className="studio-export-select-all"
+                onClick={toggleAllExportAssets}
+                disabled={isExporting}
+              >
+                {allExportAssetsSelected ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+
+            <div className="studio-export-grid">
+              {assets.map((asset, index) => {
+                const isSelected = exportSelectionIds.includes(asset.id);
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    aria-label={`${isSelected ? "Deselect" : "Select"} screen ${index + 1}`}
+                    className={`studio-export-card ${
+                      isSelected ? "studio-export-card-selected" : ""
+                    }`}
+                    onClick={() => toggleExportAsset(asset.id)}
+                    disabled={isExporting}
+                  >
+                    <span className="studio-export-check" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" fill="none">
+                        <path d="m3.25 8.2 3 3.05 6.5-6.5" />
+                      </svg>
+                    </span>
+                    <span className="studio-export-thumbnail" aria-hidden="true">
+                      <IosStoreCanvas
+                        asset={asset}
+                        template={activeTemplate}
+                        scale={EXPORT_PICKER_THUMB_WIDTH / activeTemplate.exportWidth}
+                      />
+                    </span>
+                    <span className="studio-export-card-copy">
+                      <span className="studio-export-card-name">
+                        Screen {index + 1}
+                      </span>
+                      <span className="studio-export-card-title">
+                        {asset.title.replace(/\n/g, " ")}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="studio-export-footer">
+              <button
+                type="button"
+                className="studio-button studio-button-secondary"
+                onClick={closeExportModal}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="studio-button studio-button-primary"
+                onClick={() => void confirmExportSelection()}
+                disabled={isExporting || exportSelectionIds.length === 0}
+              >
+                {isExporting
+                  ? "Exporting..."
+                  : `Export (${exportSelectionIds.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cropAsset?.backgroundImageSrc ? (
         <div className="studio-modal-backdrop studio-crop-backdrop" onClick={closeBackgroundCrop}>
