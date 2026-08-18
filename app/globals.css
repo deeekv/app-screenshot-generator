@@ -86,6 +86,14 @@ textarea {
   filter: drop-shadow(0 0 1em rgba(196, 132, 252, 0.75));
 }
 
+.ios-upload-placeholder-icon-onboarding {
+  border-color: rgba(221, 214, 254, 0.82);
+  background: #6d28d9;
+  box-shadow:
+    0 0.75em 2em rgba(0, 0, 0, 0.42),
+    0 0 1.15em rgba(139, 92, 246, 0.72);
+}
+
 .ios-upload-placeholder-icon-onboarding::before {
   position: absolute;
   z-index: -1;

@@ -616,9 +616,19 @@ export default function Home() {
   }, [redo, undo]);
 
   useEffect(() => {
+    const forceLocalGuide =
+      ["localhost", "127.0.0.1"].includes(window.location.hostname) &&
+      new URLSearchParams(window.location.search).get("onboarding") === "1";
+
+    if (forceLocalGuide) {
+      setGuideStep(1);
+      setFurthestGuideStep(1);
+    }
+
     setIsGuideVisible(
-      window.localStorage.getItem("studio-guide-sync-choice-v1-dismissed") !==
-        "true",
+      forceLocalGuide ||
+        window.localStorage.getItem("studio-guide-sync-choice-v1-dismissed") !==
+          "true",
     );
   }, []);
 
