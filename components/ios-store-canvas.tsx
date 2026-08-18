@@ -201,6 +201,8 @@ export function IosStoreCanvas({
                   lineHeight: `${template.title.lineHeight}px`,
                   letterSpacing: template.title.letterSpacing,
                   textAlign: "center",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "break-word",
                 }}
               />
             ) : (
@@ -214,6 +216,8 @@ export function IosStoreCanvas({
                   lineHeight: `${template.title.lineHeight}px`,
                   letterSpacing: template.title.letterSpacing,
                   textAlign: "center",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "break-word",
                 }}
               >
                 {asset.title}
