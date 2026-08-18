@@ -1617,13 +1617,13 @@ export default function Home() {
                             className="studio-background-sync-info"
                             data-tooltip={
                               keepBackgroundsSynced
-                                ? "Background changes apply to every screen, and new screens inherit this background."
-                                : "Turn this on to apply background changes to every screen and reuse them on new screens."
+                                ? "Background changes apply to all screens, including new ones."
+                                : "Use this background on all screens, including new ones."
                             }
                             aria-label={
                               keepBackgroundsSynced
-                                ? "Background sync is on. Changes apply to every screen and new screens."
-                                : "Background sync is off. Turn it on to apply changes to every screen and new screens."
+                                ? "Background sync on. Changes apply to all screens."
+                                : "Background sync off. Turn on to apply changes to all screens."
                             }
                           >
                             <svg
