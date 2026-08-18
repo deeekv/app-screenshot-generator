@@ -59,6 +59,8 @@ type HistoryState = {
   future: AssetItem[][];
 };
 
+type GuideStep = 1 | 2 | 3 | 4 | 5;
+
 const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
 const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
@@ -373,7 +375,9 @@ export default function Home() {
     IOS_TEMPLATE.deviceSlug,
   );
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false);
-  const [guideStep, setGuideStep] = useState(1);
+  const [guideStep, setGuideStep] = useState<GuideStep>(1);
+  const [furthestGuideStep, setFurthestGuideStep] = useState<GuideStep>(1);
+  const [guideAssetId, setGuideAssetId] = useState<string | null>(null);
   const [isGuideVisible, setIsGuideVisible] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [pendingUploadName, setPendingUploadName] = useState<string | null>(null);
@@ -478,7 +482,7 @@ export default function Home() {
         <button
           type="button"
           className={`studio-nav-device-trigger ${
-            isGuideVisible && guideStep === 4 ? "studio-onboarding-device" : ""
+            isGuideVisible && guideStep === 5 ? "studio-onboarding-device" : ""
           }`}
           aria-haspopup="menu"
           aria-expanded={isDeviceMenuOpen}
@@ -514,7 +518,7 @@ export default function Home() {
                     event.stopPropagation();
                     setActiveDeviceSlug(device.deviceSlug);
                     setIsDeviceMenuOpen(false);
-                    if (guideStep === 4) {
+                    if (guideStep === 5) {
                       dismissGuide();
                     }
                   }}
@@ -602,13 +606,13 @@ export default function Home() {
 
   useEffect(() => {
     setIsGuideVisible(
-      window.localStorage.getItem("studio-guide-background-add-v1-dismissed") !==
+      window.localStorage.getItem("studio-guide-sync-choice-v1-dismissed") !==
         "true",
     );
   }, []);
 
   useEffect(() => {
-    if (!isGuideVisible || guideStep !== 3) {
+    if (!isGuideVisible || guideStep !== 4) {
       return;
     }
 
@@ -624,7 +628,7 @@ export default function Home() {
   function dismissGuide() {
     setIsGuideVisible(false);
     window.localStorage.setItem(
-      "studio-guide-background-add-v1-dismissed",
+      "studio-guide-sync-choice-v1-dismissed",
       "true",
     );
   }
@@ -751,9 +755,6 @@ export default function Home() {
           : asset,
       ),
     );
-    if (BACKGROUND_STYLE_KEYS.has(key)) {
-      completeBackgroundGuideStep();
-    }
   }
 
   function updateBackgroundStyle(
@@ -767,7 +768,6 @@ export default function Home() {
           : asset,
       ),
     );
-    completeBackgroundGuideStep();
   }
 
   function toggleBackgroundSync() {
@@ -779,7 +779,6 @@ export default function Home() {
       );
     }
     setKeepBackgroundsSynced(nextSyncState);
-    completeBackgroundGuideStep();
   }
 
   function selectPreviewPanel() {
@@ -793,13 +792,47 @@ export default function Home() {
     setEditingTitleAssetId(null);
   }
 
-  function completeBackgroundGuideStep() {
-    if (guideStep !== 2) {
+  function navigateGuide(nextStep: GuideStep) {
+    if (nextStep === 1 || nextStep === 4) {
+      closeSidePanel();
+    } else if (nextStep === 2 || nextStep === 3) {
+      const targetAsset =
+        assets.find((asset) => asset.id === guideAssetId) ?? assets[0];
+      if (targetAsset) {
+        setSelectedAssetIds([targetAsset.id]);
+        setPreviewPanelSelected(false);
+      }
+    }
+
+    setGuideStep(nextStep);
+  }
+
+  function advanceGuide(nextStep: GuideStep) {
+    setFurthestGuideStep((current) =>
+      Math.max(current, nextStep) as GuideStep,
+    );
+    navigateGuide(nextStep);
+  }
+
+  function handleGuideBack() {
+    if (guideStep > 1) {
+      navigateGuide((guideStep - 1) as GuideStep);
+    }
+  }
+
+  function handleGuideNext() {
+    if (guideStep === 5) {
+      dismissGuide();
       return;
     }
 
-    setGuideStep(3);
-    closeSidePanel();
+    const canAdvance =
+      guideStep === 2 ||
+      guideStep === 3 ||
+      guideStep < furthestGuideStep;
+    if (canAdvance) {
+      advanceGuide((guideStep + 1) as GuideStep);
+    }
   }
 
   function selectAsset(assetId: string, withRangeSelection: boolean) {
@@ -814,7 +847,8 @@ export default function Home() {
       return [assetId];
     });
     if (guideStep === 1) {
-      setGuideStep(2);
+      setGuideAssetId(assetId);
+      advanceGuide(2);
     }
   }
 
@@ -826,8 +860,8 @@ export default function Home() {
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
-    if (guideStep === 3) {
-      setGuideStep(4);
+    if (guideStep === 4) {
+      advanceGuide(5);
     }
   }
 
@@ -1262,6 +1296,10 @@ export default function Home() {
     assets.length <= 1 ||
     (selectedAssetIds.length > 0 && selectedAssetIds.length >= assets.length);
   const sidePanelOpen = Boolean(editableAsset);
+  const canGuideGoNext =
+    guideStep === 2 ||
+    guideStep === 3 ||
+    guideStep < furthestGuideStep;
   return (
     <main className="studio-shell text-stone-100">
       <div className="studio-ambient studio-ambient-left" />
@@ -1283,7 +1321,7 @@ export default function Home() {
               <div className="studio-get-started-header">
                 <div>
                   <p className="studio-get-started-eyebrow">Get started</p>
-                  <p className="studio-get-started-progress">Step {guideStep} of 4</p>
+                  <p className="studio-get-started-progress">Step {guideStep} of 5</p>
                 </div>
                 <button
                   type="button"
@@ -1298,13 +1336,37 @@ export default function Home() {
                 {guideStep === 1
                   ? "Select a screen to open its design controls."
                   : guideStep === 2
-                    ? "Configure its background. Turn sync on only when every screen should match."
+                    ? "Choose a colour or image for this screen's background."
                     : guideStep === 3
-                      ? "Use the purple dot to add a new screen."
-                      : "Switch device sizes from the menu in the top-right."}
+                      ? "Turn on sync only if background changes should apply to every screen."
+                      : guideStep === 4
+                        ? "Use the purple dot to add a new screen."
+                        : "Switch device sizes from the menu in the top-right."}
               </p>
+              {guideStep > 1 || canGuideGoNext || guideStep === 5 ? (
+                <div className="studio-get-started-actions">
+                  {guideStep > 1 ? (
+                    <button
+                      type="button"
+                      className="studio-get-started-button studio-get-started-button-back"
+                      onClick={handleGuideBack}
+                    >
+                      Back
+                    </button>
+                  ) : null}
+                  {guideStep === 5 || canGuideGoNext ? (
+                    <button
+                      type="button"
+                      className="studio-get-started-button studio-get-started-button-next"
+                      onClick={handleGuideNext}
+                    >
+                      {guideStep === 5 ? "Done" : "Next"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="studio-get-started-steps" aria-hidden="true">
-                {[1, 2, 3, 4].map((step) => (
+                {[1, 2, 3, 4, 5].map((step) => (
                   <span
                     key={step}
                     className={step <= guideStep ? "studio-get-started-step-active" : ""}
@@ -1630,7 +1692,13 @@ export default function Home() {
                         )}
                       </div>
 
-                      <div className="studio-background-sync-row">
+                      <div
+                        className={`studio-background-sync-row ${
+                          isGuideVisible && guideStep === 3
+                            ? "studio-onboarding-sync"
+                            : ""
+                        }`}
+                      >
                         <span className="studio-background-sync-copy">
                           <span className="studio-background-sync-title">
                             Keep backgrounds synced
@@ -1920,7 +1988,7 @@ export default function Home() {
                               <button
                                 type="button"
                                 className={`studio-add-connector ${
-                                  isGuideVisible && guideStep === 3
+                                  isGuideVisible && guideStep === 4
                                     ? "studio-onboarding-add"
                                     : ""
                                 }`}
@@ -2109,7 +2177,7 @@ export default function Home() {
                               <button
                                 type="button"
                                 className={`studio-add-connector studio-add-connector-5-5 ${
-                                  isGuideVisible && guideStep === 3
+                                  isGuideVisible && guideStep === 4
                                     ? "studio-onboarding-add"
                                     : ""
                                 }`}

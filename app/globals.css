@@ -161,6 +161,53 @@ textarea {
   line-height: 1.45;
 }
 
+.studio-get-started-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+  margin-top: 0.875em;
+}
+
+.studio-get-started-button {
+  min-width: 4.75em;
+  min-height: 2.25em;
+  padding: 0.5em 0.875em;
+  border: 0.0625em solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.5em;
+  font-family: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.75em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.studio-get-started-button-back {
+  background: rgba(255, 255, 255, 0.04);
+  color: #d6d3d1;
+}
+
+.studio-get-started-button-back:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+}
+
+.studio-get-started-button-next {
+  border-color: #f5f5f4;
+  background: #f5f5f4;
+  color: #171717;
+}
+
+.studio-get-started-button-next:hover {
+  border-color: #ffffff;
+  background: #ffffff;
+}
+
+.studio-get-started-button:focus-visible {
+  outline: 0.125em solid rgba(255, 255, 255, 0.58);
+  outline-offset: 0.15em;
+}
+
 .studio-get-started-close {
   display: grid;
   place-items: center;
@@ -911,14 +958,16 @@ textarea {
 
 .studio-onboarding-device,
 .studio-onboarding-screen,
-.studio-onboarding-background {
+.studio-onboarding-background,
+.studio-onboarding-sync {
   position: relative;
   isolation: isolate;
 }
 
 .studio-onboarding-device::before,
 .studio-onboarding-screen::before,
-.studio-onboarding-background::before {
+.studio-onboarding-background::before,
+.studio-onboarding-sync::before {
   position: absolute;
   z-index: -1;
   inset: -0.15625em;
@@ -965,6 +1014,18 @@ textarea {
   inset: -0.0625em;
   padding: 0.0625em;
   border-radius: 0.9375em;
+  pointer-events: none;
+}
+
+.studio-onboarding-sync {
+  border-radius: 0.5em;
+}
+
+.studio-onboarding-sync::before {
+  z-index: 2;
+  inset: -0.1875em;
+  padding: 0.0625em;
+  border-radius: 0.625em;
   pointer-events: none;
 }
 
@@ -1172,6 +1233,7 @@ textarea {
   .studio-onboarding-device::before,
   .studio-onboarding-screen::before,
   .studio-onboarding-background::before,
+  .studio-onboarding-sync::before,
   .studio-onboarding-add::before {
     animation: none;
   }
