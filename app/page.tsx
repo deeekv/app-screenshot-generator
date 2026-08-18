@@ -94,6 +94,7 @@ const DEFAULT_SCREEN_TITLES = [
   "View the\nevent schedule",
   "View all\nsession details",
 ] as const;
+const NEW_SCREEN_TITLE = "Highlight another\napp feature";
 
 function createAsset(id: string, title = defaultIosAssetState.title): AssetItem {
   return {
@@ -601,14 +602,31 @@ export default function Home() {
 
   useEffect(() => {
     setIsGuideVisible(
-      window.localStorage.getItem("studio-guide-background-v1-dismissed") !==
+      window.localStorage.getItem("studio-guide-background-add-v1-dismissed") !==
         "true",
     );
   }, []);
 
+  useEffect(() => {
+    if (!isGuideVisible || guideStep !== 3) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(".studio-onboarding-add")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeDeviceSlug, guideStep, isGuideVisible]);
+
   function dismissGuide() {
     setIsGuideVisible(false);
-    window.localStorage.setItem("studio-guide-background-v1-dismissed", "true");
+    window.localStorage.setItem(
+      "studio-guide-background-add-v1-dismissed",
+      "true",
+    );
   }
 
   useEffect(() => {
@@ -733,8 +751,8 @@ export default function Home() {
           : asset,
       ),
     );
-    if (guideStep === 2 && BACKGROUND_STYLE_KEYS.has(key)) {
-      setGuideStep(3);
+    if (BACKGROUND_STYLE_KEYS.has(key)) {
+      completeBackgroundGuideStep();
     }
   }
 
@@ -749,9 +767,7 @@ export default function Home() {
           : asset,
       ),
     );
-    if (guideStep === 2) {
-      setGuideStep(3);
-    }
+    completeBackgroundGuideStep();
   }
 
   function toggleBackgroundSync() {
@@ -763,9 +779,7 @@ export default function Home() {
       );
     }
     setKeepBackgroundsSynced(nextSyncState);
-    if (guideStep === 2) {
-      setGuideStep(3);
-    }
+    completeBackgroundGuideStep();
   }
 
   function selectPreviewPanel() {
@@ -777,6 +791,15 @@ export default function Home() {
     setSelectedAssetIds([]);
     setPreviewPanelSelected(true);
     setEditingTitleAssetId(null);
+  }
+
+  function completeBackgroundGuideStep() {
+    if (guideStep !== 2) {
+      return;
+    }
+
+    setGuideStep(3);
+    closeSidePanel();
   }
 
   function selectAsset(assetId: string, withRangeSelection: boolean) {
@@ -796,13 +819,16 @@ export default function Home() {
   }
 
   function addAsset() {
-    const newAsset = createAsset(nextId());
+    const newAsset = createAsset(nextId(), NEW_SCREEN_TITLE);
     if (keepBackgroundsSynced && assets[0]) {
       Object.assign(newAsset, getBackgroundStyle(assets[0]));
     }
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
+    if (guideStep === 3) {
+      setGuideStep(4);
+    }
   }
 
   function duplicateAsset(assetId: string) {
@@ -829,9 +855,6 @@ export default function Home() {
 
     setSelectedAssetIds([duplicate.id]);
     setPreviewPanelSelected(false);
-    if (guideStep === 3) {
-      setGuideStep(4);
-    }
   }
 
   function deleteAsset(assetId: string) {
@@ -1277,7 +1300,7 @@ export default function Home() {
                   : guideStep === 2
                     ? "Configure its background. Turn sync on only when every screen should match."
                     : guideStep === 3
-                      ? "Duplicate the screen to carry its design into a new one."
+                      ? "Use the purple dot to add a new screen."
                       : "Switch device sizes from the menu in the top-right."}
               </p>
               <div className="studio-get-started-steps" aria-hidden="true">
@@ -1721,11 +1744,7 @@ export default function Home() {
                     <div className="studio-inline-actions">
                       <button
                         type="button"
-                        className={`studio-icon-button ${
-                          isGuideVisible && guideStep === 3
-                            ? "studio-onboarding-duplicate"
-                            : ""
-                        }`}
+                        className="studio-icon-button"
                         onClick={() => duplicateAsset(editableAsset!.id)}
                         aria-label="Duplicate selected asset"
                       >
@@ -1847,11 +1866,7 @@ export default function Home() {
                                 </button>
                                 <button
                                   type="button"
-                                  className={`studio-icon-plain-button ${
-                                    isGuideVisible && guideStep === 3 && isSelected
-                                      ? "studio-onboarding-duplicate"
-                                      : ""
-                                  }`}
+                                  className="studio-icon-plain-button"
                                   data-no-drag="true"
                                   onClick={(event) => {
                                     event.stopPropagation();
@@ -1904,7 +1919,11 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className="studio-add-connector"
+                                className={`studio-add-connector ${
+                                  isGuideVisible && guideStep === 3
+                                    ? "studio-onboarding-add"
+                                    : ""
+                                }`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();
@@ -2041,11 +2060,7 @@ export default function Home() {
                                 </button>
                                 <button
                                   type="button"
-                                  className={`studio-icon-plain-button ${
-                                    isGuideVisible && guideStep === 3 && isSelected
-                                      ? "studio-onboarding-duplicate"
-                                      : ""
-                                  }`}
+                                  className="studio-icon-plain-button"
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     duplicateAsset(asset.id);
@@ -2093,7 +2108,11 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className="studio-add-connector studio-add-connector-5-5"
+                                className={`studio-add-connector studio-add-connector-5-5 ${
+                                  isGuideVisible && guideStep === 3
+                                    ? "studio-onboarding-add"
+                                    : ""
+                                }`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();
