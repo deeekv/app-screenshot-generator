@@ -1336,7 +1336,7 @@ export default function Home() {
                 {guideStep === 1
                   ? "Select a screen to open its design controls."
                   : guideStep === 2
-                    ? "Choose a colour or image for this screen's background."
+                    ? "Configure a gradient or image."
                     : guideStep === 3
                       ? "Turn on sync only if background changes should apply to every screen."
                       : guideStep === 4

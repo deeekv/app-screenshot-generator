@@ -1016,7 +1016,20 @@ textarea {
 }
 
 .studio-onboarding-sync .studio-sync-switch-thumb {
-  animation: studioOnboardingKnobPulse 1.8s ease-out infinite;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.studio-onboarding-sync .studio-sync-switch-thumb::before {
+  position: absolute;
+  z-index: -1;
+  inset: -0.375em;
+  border-radius: 9999px;
+  background: rgba(139, 92, 246, 0.72);
+  box-shadow: 0 0 0.45em rgba(139, 92, 246, 0.72);
+  content: "";
+  animation: studioOnboardingPulse 1.8s ease-out infinite;
+  pointer-events: none;
 }
 
 .studio-onboarding-add {
@@ -1058,21 +1071,6 @@ textarea {
   50% {
     opacity: 0.62;
     transform: scale(1.05);
-  }
-}
-
-@keyframes studioOnboardingKnobPulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0.0625em 0.1875em rgba(0, 0, 0, 0.34),
-      0 0 0 0 rgba(139, 92, 246, 0.52);
-  }
-
-  50% {
-    box-shadow:
-      0 0.0625em 0.1875em rgba(0, 0, 0, 0.34),
-      0 0 0 0.4em rgba(139, 92, 246, 0);
   }
 }
 
@@ -1242,7 +1240,7 @@ textarea {
     animation: none;
   }
 
-  .studio-onboarding-sync .studio-sync-switch-thumb {
+  .studio-onboarding-sync .studio-sync-switch-thumb::before {
     animation: none;
   }
 }
