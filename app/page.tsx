@@ -346,7 +346,7 @@ export default function Home() {
   const [previewPanelSelected, setPreviewPanelSelected] = useState(true);
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [keepBackgroundsSynced, setKeepBackgroundsSynced] = useState(true);
+  const [keepBackgroundsSynced, setKeepBackgroundsSynced] = useState(false);
   const [cropAssetId, setCropAssetId] = useState<string | null>(null);
   const [cropDraft, setCropDraft] = useState<BackgroundCropDraft>({
     positionX: 0,
@@ -477,7 +477,7 @@ export default function Home() {
         <button
           type="button"
           className={`studio-nav-device-trigger ${
-            isGuideVisible && guideStep === 3 ? "studio-onboarding-device" : ""
+            isGuideVisible && guideStep === 4 ? "studio-onboarding-device" : ""
           }`}
           aria-haspopup="menu"
           aria-expanded={isDeviceMenuOpen}
@@ -513,7 +513,7 @@ export default function Home() {
                     event.stopPropagation();
                     setActiveDeviceSlug(device.deviceSlug);
                     setIsDeviceMenuOpen(false);
-                    if (guideStep === 3) {
+                    if (guideStep === 4) {
                       dismissGuide();
                     }
                   }}
@@ -600,12 +600,15 @@ export default function Home() {
   }, [redo, undo]);
 
   useEffect(() => {
-    setIsGuideVisible(window.localStorage.getItem("studio-guide-dismissed") !== "true");
+    setIsGuideVisible(
+      window.localStorage.getItem("studio-guide-background-v1-dismissed") !==
+        "true",
+    );
   }, []);
 
   function dismissGuide() {
     setIsGuideVisible(false);
-    window.localStorage.setItem("studio-guide-dismissed", "true");
+    window.localStorage.setItem("studio-guide-background-v1-dismissed", "true");
   }
 
   useEffect(() => {
@@ -730,6 +733,9 @@ export default function Home() {
           : asset,
       ),
     );
+    if (guideStep === 2 && BACKGROUND_STYLE_KEYS.has(key)) {
+      setGuideStep(3);
+    }
   }
 
   function updateBackgroundStyle(
@@ -743,6 +749,9 @@ export default function Home() {
           : asset,
       ),
     );
+    if (guideStep === 2) {
+      setGuideStep(3);
+    }
   }
 
   function toggleBackgroundSync() {
@@ -754,6 +763,9 @@ export default function Home() {
       );
     }
     setKeepBackgroundsSynced(nextSyncState);
+    if (guideStep === 2) {
+      setGuideStep(3);
+    }
   }
 
   function selectPreviewPanel() {
@@ -791,9 +803,6 @@ export default function Home() {
     commitAssets((current) => [...current, newAsset]);
     setSelectedAssetIds([newAsset.id]);
     setPreviewPanelSelected(false);
-    if (guideStep === 2) {
-      setGuideStep(3);
-    }
   }
 
   function duplicateAsset(assetId: string) {
@@ -820,6 +829,9 @@ export default function Home() {
 
     setSelectedAssetIds([duplicate.id]);
     setPreviewPanelSelected(false);
+    if (guideStep === 3) {
+      setGuideStep(4);
+    }
   }
 
   function deleteAsset(assetId: string) {
@@ -1248,7 +1260,7 @@ export default function Home() {
               <div className="studio-get-started-header">
                 <div>
                   <p className="studio-get-started-eyebrow">Get started</p>
-                  <p className="studio-get-started-progress">Step {guideStep} of 3</p>
+                  <p className="studio-get-started-progress">Step {guideStep} of 4</p>
                 </div>
                 <button
                   type="button"
@@ -1263,11 +1275,13 @@ export default function Home() {
                 {guideStep === 1
                   ? "Select a screen to open its design controls."
                   : guideStep === 2
-                    ? "Use the purple dot to add another screen."
-                    : "Switch device sizes from the menu in the top-right."}
+                    ? "Configure its background. Turn sync on only when every screen should match."
+                    : guideStep === 3
+                      ? "Duplicate the screen to carry its design into a new one."
+                      : "Switch device sizes from the menu in the top-right."}
               </p>
               <div className="studio-get-started-steps" aria-hidden="true">
-                {[1, 2, 3].map((step) => (
+                {[1, 2, 3, 4].map((step) => (
                   <span
                     key={step}
                     className={step <= guideStep ? "studio-get-started-step-active" : ""}
@@ -1375,7 +1389,13 @@ export default function Home() {
                   <section className="studio-section studio-section-bordered">
                     <p className="studio-section-label">Background</p>
 
-                    <div className="studio-mode-panel">
+                    <div
+                      className={`studio-mode-panel ${
+                        isGuideVisible && guideStep === 2
+                          ? "studio-onboarding-background"
+                          : ""
+                      }`}
+                    >
                       <div className="studio-mode-row">
                         <p className="studio-mode-value">
                           {editableAsset!.backgroundMode === "image"
@@ -1593,8 +1613,9 @@ export default function Home() {
                             Keep backgrounds synced
                           </span>
                           <span className="studio-background-sync-description">
-                            Apply changes to every screen and reuse this
-                            background on new screens.
+                            {keepBackgroundsSynced
+                              ? "Changes apply to every screen and new screens inherit this background."
+                              : "Each screen keeps its own background until you turn this on."}
                           </span>
                         </span>
                         <button
@@ -1681,7 +1702,11 @@ export default function Home() {
                     <div className="studio-inline-actions">
                       <button
                         type="button"
-                        className="studio-icon-button"
+                        className={`studio-icon-button ${
+                          isGuideVisible && guideStep === 3
+                            ? "studio-onboarding-duplicate"
+                            : ""
+                        }`}
                         onClick={() => duplicateAsset(editableAsset!.id)}
                         aria-label="Duplicate selected asset"
                       >
@@ -1803,7 +1828,11 @@ export default function Home() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="studio-icon-plain-button"
+                                  className={`studio-icon-plain-button ${
+                                    isGuideVisible && guideStep === 3 && isSelected
+                                      ? "studio-onboarding-duplicate"
+                                      : ""
+                                  }`}
                                   data-no-drag="true"
                                   onClick={(event) => {
                                     event.stopPropagation();
@@ -1856,11 +1885,7 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className={`studio-add-connector ${
-                                  isGuideVisible && guideStep === 2
-                                    ? "studio-onboarding-add"
-                                    : ""
-                                }`}
+                                className="studio-add-connector"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();
@@ -1997,7 +2022,11 @@ export default function Home() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="studio-icon-plain-button"
+                                  className={`studio-icon-plain-button ${
+                                    isGuideVisible && guideStep === 3 && isSelected
+                                      ? "studio-onboarding-duplicate"
+                                      : ""
+                                  }`}
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     duplicateAsset(asset.id);
@@ -2045,11 +2074,7 @@ export default function Home() {
                             >
                               <button
                                 type="button"
-                                className={`studio-add-connector studio-add-connector-5-5 ${
-                                  isGuideVisible && guideStep === 2
-                                    ? "studio-onboarding-add"
-                                    : ""
-                                }`}
+                                className="studio-add-connector studio-add-connector-5-5"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   addAsset();

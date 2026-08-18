@@ -880,12 +880,17 @@ textarea {
 }
 
 .studio-onboarding-device,
-.studio-onboarding-screen {
+.studio-onboarding-screen,
+.studio-onboarding-background,
+.studio-onboarding-duplicate {
+  position: relative;
   isolation: isolate;
 }
 
 .studio-onboarding-device::before,
-.studio-onboarding-screen::before {
+.studio-onboarding-screen::before,
+.studio-onboarding-background::before,
+.studio-onboarding-duplicate::before {
   position: absolute;
   z-index: -1;
   inset: -0.15625em;
@@ -925,6 +930,26 @@ textarea {
     rgba(255, 255, 255, 0.95),
     rgba(255, 255, 255, 0.35)
   );
+}
+
+.studio-onboarding-background::before {
+  z-index: 2;
+  inset: -0.0625em;
+  padding: 0.0625em;
+  border-radius: 0.9375em;
+  pointer-events: none;
+}
+
+.studio-onboarding-duplicate::before {
+  z-index: -1;
+  inset: -0.25em;
+  padding: 0;
+  border-radius: 9999px;
+  background: rgba(139, 92, 246, 0.68);
+  box-shadow: 0 0 0.5em rgba(139, 92, 246, 0.72);
+  -webkit-mask: none;
+  mask-composite: initial;
+  animation: studioOnboardingPulse 1.8s ease-out infinite;
 }
 
 .studio-onboarding-add {
@@ -1130,6 +1155,8 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .studio-onboarding-device::before,
   .studio-onboarding-screen::before,
+  .studio-onboarding-background::before,
+  .studio-onboarding-duplicate::before,
   .studio-onboarding-add::before {
     animation: none;
   }
