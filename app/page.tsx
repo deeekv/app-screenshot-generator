@@ -59,10 +59,16 @@ type HistoryState = {
   future: AssetItem[][];
 };
 
+type RailCueState = {
+  hasOverflow: boolean;
+  hasMore: boolean;
+};
+
 type GuideStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
+const MAX_HISTORY_STEPS = 10;
 const EXPORT_PICKER_THUMB_WIDTH = 116;
 const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
   "backgroundMode",
@@ -336,7 +342,10 @@ export default function Home() {
   const exportRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const previewTileRef = useRef<HTMLDivElement>(null);
   const preview55TileRef = useRef<HTMLDivElement>(null);
+  const previewRailRef = useRef<HTMLDivElement>(null);
+  const preview55RailRef = useRef<HTMLDivElement>(null);
   const cropViewportRef = useRef<HTMLDivElement>(null);
+  const nudgedRailSlugsRef = useRef(new Set<string>());
   const cropDragRef = useRef<{
     pointerId: number;
     startClientX: number;
@@ -346,6 +355,7 @@ export default function Home() {
     horizontalTravel: number;
     verticalTravel: number;
   } | null>(null);
+  const historyGroupRef = useRef<string | null>(null);
 
   const [history, setHistory] = useState<HistoryState>(() => ({
     past: [],
@@ -401,6 +411,13 @@ export default function Home() {
     titleColor: hexLabel(defaultIosAssetState.titleColor),
     baseColor: hexLabel(defaultIosAssetState.baseColor),
     glowColor: hexLabel(defaultIosAssetState.glowColor),
+  });
+  const [nudgingRailSlug, setNudgingRailSlug] = useState<string | null>(null);
+  const [railCueState, setRailCueState] = useState<
+    Record<string, RailCueState>
+  >({
+    [IOS_TEMPLATE.deviceSlug]: { hasOverflow: false, hasMore: false },
+    [IOS_5_5_TEMPLATE.deviceSlug]: { hasOverflow: false, hasMore: false },
   });
 
   const assets = history.present;
@@ -478,6 +495,37 @@ export default function Home() {
     cropViewportSize,
   ]);
 
+  const updateRailCue = useCallback(
+    (deviceSlug: string, rail: HTMLDivElement | null) => {
+      if (!rail) {
+        return;
+      }
+
+      const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth);
+      const nextState = {
+        hasOverflow: maxScrollLeft > 2,
+        hasMore: maxScrollLeft - rail.scrollLeft > 2,
+      };
+
+      setRailCueState((current) => {
+        const previous = current[deviceSlug];
+        if (
+          previous?.hasOverflow === nextState.hasOverflow &&
+          previous?.hasMore === nextState.hasMore
+        ) {
+          return current;
+        }
+
+        return { ...current, [deviceSlug]: nextState };
+      });
+    },
+    [],
+  );
+
+  function handleRailScroll(deviceSlug: string, rail: HTMLDivElement) {
+    updateRailCue(deviceSlug, rail);
+  }
+
   function exportBaseName(template: IosTemplate) {
     return [slugify(exportProjectName), template.deviceSlug].filter(Boolean).join("-");
   }
@@ -497,12 +545,18 @@ export default function Home() {
           }`}
           aria-haspopup="menu"
           aria-expanded={isDeviceMenuOpen}
+          aria-label={`Select device size. Current: ${activeDevice.deviceLabel}`}
           onClick={(event) => {
             event.stopPropagation();
             setIsDeviceMenuOpen((current) => !current);
           }}
         >
-          <span>{activeDevice.deviceLabel.replace("iOS ", "iOS (") + ")"}</span>
+          <span className="studio-device-label-full" aria-hidden="true">
+            {activeDevice.deviceLabel.replace("iOS ", "iOS (") + ")"}
+          </span>
+          <span className="studio-device-label-compact" aria-hidden="true">
+            {activeDevice.deviceLabel.replace("iOS ", "")}
+          </span>
           <img
             src="/assets/icon-chevron-down-medium.svg"
             alt=""
@@ -545,7 +599,14 @@ export default function Home() {
   }
 
   const commitAssets = useCallback(
-    (updater: AssetItem[] | ((current: AssetItem[]) => AssetItem[])) => {
+    (
+      updater: AssetItem[] | ((current: AssetItem[]) => AssetItem[]),
+      historyGroup: string | null = null,
+    ) => {
+      const continuesHistoryGroup =
+        historyGroup !== null && historyGroupRef.current === historyGroup;
+      historyGroupRef.current = historyGroup;
+
       setHistory((current) => {
         const next =
           typeof updater === "function" ? updater(current.present) : updater;
@@ -555,7 +616,11 @@ export default function Home() {
         }
 
         return {
-          past: [...current.past, cloneAssets(current.present)].slice(-100),
+          past: continuesHistoryGroup
+            ? current.past
+            : [...current.past, cloneAssets(current.present)].slice(
+                -MAX_HISTORY_STEPS,
+              ),
           present: cloneAssets(next),
           future: [],
         };
@@ -564,7 +629,12 @@ export default function Home() {
     [],
   );
 
+  const endHistoryGroup = useCallback(() => {
+    historyGroupRef.current = null;
+  }, []);
+
   const undo = useCallback(() => {
+    historyGroupRef.current = null;
     setHistory((current) => {
       const previous = current.past.at(-1);
       if (!previous) {
@@ -574,12 +644,16 @@ export default function Home() {
       return {
         past: current.past.slice(0, -1),
         present: cloneAssets(previous),
-        future: [cloneAssets(current.present), ...current.future].slice(0, 100),
+        future: [cloneAssets(current.present), ...current.future].slice(
+          0,
+          MAX_HISTORY_STEPS,
+        ),
       };
     });
   }, []);
 
   const redo = useCallback(() => {
+    historyGroupRef.current = null;
     setHistory((current) => {
       const next = current.future[0];
       if (!next) {
@@ -587,7 +661,9 @@ export default function Home() {
       }
 
       return {
-        past: [...current.past, cloneAssets(current.present)].slice(-100),
+        past: [...current.past, cloneAssets(current.present)].slice(
+          -MAX_HISTORY_STEPS,
+        ),
         present: cloneAssets(next),
         future: current.future.slice(1),
       };
@@ -596,15 +672,17 @@ export default function Home() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const isUndoKey = event.key.toLowerCase() === "z";
+      const key = event.key.toLowerCase();
       const usesModifier = event.metaKey || event.ctrlKey;
+      const isUndoKey = key === "z" && !event.shiftKey;
+      const isRedoKey = (key === "z" && event.shiftKey) || key === "y";
 
-      if (!usesModifier || !isUndoKey) {
+      if (!usesModifier || (!isUndoKey && !isRedoKey)) {
         return;
       }
 
       event.preventDefault();
-      if (event.shiftKey) {
+      if (isRedoKey) {
         redo();
       } else {
         undo();
@@ -631,6 +709,44 @@ export default function Home() {
           "true",
     );
   }, []);
+
+  useEffect(() => {
+    const rails = [
+      [IOS_TEMPLATE.deviceSlug, previewRailRef.current],
+      [IOS_5_5_TEMPLATE.deviceSlug, preview55RailRef.current],
+    ] as const;
+    const updateAll = () => {
+      rails.forEach(([deviceSlug, rail]) => updateRailCue(deviceSlug, rail));
+    };
+    const frame = window.requestAnimationFrame(updateAll);
+    const observers = rails.flatMap(([deviceSlug, rail]) => {
+      if (!rail) {
+        return [];
+      }
+
+      const observer = new ResizeObserver(() => updateRailCue(deviceSlug, rail));
+      observer.observe(rail);
+      return [observer];
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observers.forEach((observer) => observer.disconnect());
+    };
+  }, [activeDeviceSlug, assets.length, updateRailCue]);
+
+  useEffect(() => {
+    if (
+      isGuideVisible ||
+      !railCueState[activeDeviceSlug]?.hasOverflow ||
+      nudgedRailSlugsRef.current.has(activeDeviceSlug)
+    ) {
+      return;
+    }
+
+    nudgedRailSlugsRef.current.add(activeDeviceSlug);
+    setNudgingRailSlug(activeDeviceSlug);
+  }, [activeDeviceSlug, isGuideVisible, railCueState]);
 
   useEffect(() => {
     if (!isGuideVisible || guideStep !== 5) {
@@ -781,15 +897,18 @@ export default function Home() {
     assetId: string,
     key: K,
     value: IosAssetState[K],
+    historyGroup: string | null = null,
   ) {
     const shouldSyncBackground =
       keepBackgroundsSynced && BACKGROUND_STYLE_KEYS.has(key);
-    commitAssets((current) =>
-      current.map((asset) =>
-        shouldSyncBackground || asset.id === assetId
-          ? { ...asset, [key]: value }
-          : asset,
-      ),
+    commitAssets(
+      (current) =>
+        current.map((asset) =>
+          shouldSyncBackground || asset.id === assetId
+            ? { ...asset, [key]: value }
+            : asset,
+        ),
+      historyGroup,
     );
   }
 
@@ -1189,7 +1308,12 @@ export default function Home() {
 
     const nextColor = toHexColor(normalized);
     if (editableAsset && nextColor) {
-      updateAsset(editableAsset.id, key, nextColor);
+      updateAsset(
+        editableAsset.id,
+        key,
+        nextColor,
+        `color:${editableAsset.id}:${key}`,
+      );
     }
   }
 
@@ -1381,6 +1505,8 @@ export default function Home() {
     assets.length <= 1 ||
     (selectedAssetIds.length > 0 && selectedAssetIds.length >= assets.length);
   const sidePanelOpen = Boolean(editableAsset);
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
   const canGuideGoNext =
     guideStep === 2 ||
     guideStep === 3 ||
@@ -1398,7 +1524,37 @@ export default function Home() {
             alt="Zuddl"
             className="studio-header-logo"
           />
-          {renderDeviceMenu()}
+          <div className="studio-header-actions">
+            <div className="studio-history-actions" aria-label="Edit history">
+              <button
+                type="button"
+                className="studio-history-button"
+                onClick={undo}
+                disabled={!canUndo}
+                aria-label="Undo"
+                data-tooltip="Undo (Ctrl/⌘ Z)"
+              >
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                  <path d="M7.25 5.25 3.5 9l3.75 3.75" />
+                  <path d="M4 9h7.1a5.15 5.15 0 0 1 5.15 5.15v.6" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="studio-history-button"
+                onClick={redo}
+                disabled={!canRedo}
+                aria-label="Redo"
+                data-tooltip="Redo (Ctrl/⌘ Shift Z)"
+              >
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                  <path d="M12.75 5.25 16.5 9l-3.75 3.75" />
+                  <path d="M16 9H8.9a5.15 5.15 0 0 0-5.15 5.15v.6" />
+                </svg>
+              </button>
+            </div>
+            {renderDeviceMenu()}
+          </div>
         </header>
 
         <section className="studio-workspace">
@@ -1502,8 +1658,10 @@ export default function Home() {
                             editableAsset!.id,
                             "title",
                             event.target.value,
+                            `title:${editableAsset!.id}`,
                           )
                         }
+                        onBlur={endHistoryGroup}
                         placeholder="Add the headline shown above the device"
                         className="studio-textarea"
                       />
@@ -1521,8 +1679,10 @@ export default function Home() {
                                 editableAsset!.id,
                                 "titleColor",
                                 event.target.value,
+                                `color:${editableAsset!.id}:titleColor`,
                               )
                             }
+                            onBlur={endHistoryGroup}
                             className="studio-color-input"
                           />
                         </span>
@@ -1536,12 +1696,13 @@ export default function Home() {
                               event.target.value,
                             )
                           }
-                          onBlur={() =>
+                          onBlur={() => {
+                            endHistoryGroup();
                             resetColorDraft(
                               "titleColor",
                               editableAsset!.titleColor,
-                            )
-                          }
+                            );
+                          }}
                           className="studio-swatch-input"
                           aria-label="Text colour hex code"
                         />
@@ -1701,8 +1862,10 @@ export default function Home() {
                                         editableAsset!.id,
                                         "baseColor",
                                         event.target.value,
+                                        `color:${editableAsset!.id}:baseColor`,
                                       )
                                     }
+                                    onBlur={endHistoryGroup}
                                     className="studio-color-input"
                                   />
                                 </span>
@@ -1716,12 +1879,13 @@ export default function Home() {
                                       event.target.value,
                                     )
                                   }
-                                  onBlur={() =>
+                                  onBlur={() => {
+                                    endHistoryGroup();
                                     resetColorDraft(
                                       "baseColor",
                                       editableAsset!.baseColor,
-                                    )
-                                  }
+                                    );
+                                  }}
                                   className="studio-swatch-input"
                                   aria-label="Base colour hex code"
                                 />
@@ -1740,8 +1904,10 @@ export default function Home() {
                                         editableAsset!.id,
                                         "glowColor",
                                         event.target.value,
+                                        `color:${editableAsset!.id}:glowColor`,
                                       )
                                     }
+                                    onBlur={endHistoryGroup}
                                     className="studio-color-input"
                                   />
                                 </span>
@@ -1755,12 +1921,13 @@ export default function Home() {
                                       event.target.value,
                                     )
                                   }
-                                  onBlur={() =>
+                                  onBlur={() => {
+                                    endHistoryGroup();
                                     resetColorDraft(
                                       "glowColor",
                                       editableAsset!.glowColor,
-                                    )
-                                  }
+                                    );
+                                  }}
                                   className="studio-swatch-input"
                                   aria-label="Glow colour hex code"
                                 />
@@ -1816,7 +1983,9 @@ export default function Home() {
                           aria-label="Keep backgrounds synced"
                           onClick={toggleBackgroundSync}
                         >
-                          <span className="studio-sync-switch-thumb" />
+                          <span className="studio-sync-switch-track">
+                            <span className="studio-sync-switch-thumb" />
+                          </span>
                         </button>
                       </div>
                     </div>
@@ -1958,10 +2127,26 @@ export default function Home() {
               <div className="studio-preview-stage-wrap">
                 <div className="studio-preview-stage">
                   <div
+                    ref={previewRailRef}
                     className={`studio-asset-rail ${
+                      nudgingRailSlug === IOS_TEMPLATE.deviceSlug
+                        ? "studio-asset-rail-nudge"
+                        : ""
+                    } ${
                       isGuideVisible && guideStep === 1 ? "studio-asset-rail-onboarding-screen" : ""
                     }`}
                     onClick={selectPreviewPanel}
+                    onAnimationEnd={() => {
+                      if (nudgingRailSlug === IOS_TEMPLATE.deviceSlug) {
+                        setNudgingRailSlug(null);
+                      }
+                    }}
+                    onScroll={(event) =>
+                      handleRailScroll(
+                        IOS_TEMPLATE.deviceSlug,
+                        event.currentTarget,
+                      )
+                    }
                   >
                     {assets.map((asset, index) => {
                       const isSelected = selectedAssetIds.includes(asset.id);
@@ -2107,6 +2292,9 @@ export default function Home() {
                       );
                     })}
                   </div>
+                  {railCueState[IOS_TEMPLATE.deviceSlug]?.hasMore ? (
+                    <div className="studio-preview-scroll-fade" aria-hidden="true" />
+                  ) : null}
                 </div>
               </div>
             </section>
@@ -2159,10 +2347,26 @@ export default function Home() {
               <div className="studio-preview-stage-wrap">
                 <div className="studio-preview-stage">
                   <div
+                    ref={preview55RailRef}
                     className={`studio-asset-rail ${
+                      nudgingRailSlug === IOS_5_5_TEMPLATE.deviceSlug
+                        ? "studio-asset-rail-nudge"
+                        : ""
+                    } ${
                       isGuideVisible && guideStep === 1 ? "studio-asset-rail-onboarding-screen" : ""
                     }`}
                     onClick={selectPreviewPanel}
+                    onAnimationEnd={() => {
+                      if (nudgingRailSlug === IOS_5_5_TEMPLATE.deviceSlug) {
+                        setNudgingRailSlug(null);
+                      }
+                    }}
+                    onScroll={(event) =>
+                      handleRailScroll(
+                        IOS_5_5_TEMPLATE.deviceSlug,
+                        event.currentTarget,
+                      )
+                    }
                   >
                     {assets.map((asset, index) => {
                       const isSelected = selectedAssetIds.includes(asset.id);
@@ -2297,6 +2501,9 @@ export default function Home() {
                       );
                     })}
                   </div>
+                  {railCueState[IOS_5_5_TEMPLATE.deviceSlug]?.hasMore ? (
+                    <div className="studio-preview-scroll-fade" aria-hidden="true" />
+                  ) : null}
                 </div>
               </div>
             </section>

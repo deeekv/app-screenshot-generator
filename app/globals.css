@@ -174,6 +174,71 @@ textarea {
   height: 1.53em;
 }
 
+.studio-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.625em;
+}
+
+.studio-history-actions {
+  display: flex;
+  gap: 0.0625em;
+  padding: 0.1875em;
+  border: 0.0625em solid rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.studio-history-button {
+  display: grid;
+  width: 1.75em;
+  height: 1.75em;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: #d6d3d1;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+
+.studio-history-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.studio-history-button:focus-visible {
+  outline: 0.125em solid rgba(255, 255, 255, 0.58);
+  outline-offset: 0.125em;
+}
+
+.studio-history-button:disabled {
+  color: #78716c;
+  cursor: default;
+  opacity: 0.42;
+}
+
+.studio-history-button svg {
+  width: 1em;
+  height: 1em;
+  stroke: currentColor;
+  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.studio-history-button[data-tooltip]::after {
+  top: calc(100% + 0.6em);
+  bottom: auto;
+  transform: translate(-50%, -0.25em);
+}
+
+.studio-history-button[data-tooltip]:hover::after,
+.studio-history-button[data-tooltip]:focus-visible::after {
+  transform: translate(-50%, 0);
+}
+
 .studio-workspace {
   padding-top: 2.6875em;
 }
@@ -858,10 +923,18 @@ textarea {
   width: 2.5em;
   height: 1.375em;
   padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.studio-sync-switch-track {
+  position: absolute;
+  inset: 0;
   border: 0.0625em solid rgba(255, 255, 255, 0.18);
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.08);
-  cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
@@ -877,7 +950,7 @@ textarea {
   transition: transform 160ms ease, background-color 160ms ease;
 }
 
-.studio-sync-switch-on {
+.studio-sync-switch-on .studio-sync-switch-track {
   border-color: #f5f5f4;
   background: #f5f5f4;
 }
@@ -1018,6 +1091,10 @@ textarea {
 .studio-nav-device-trigger:focus-visible {
   outline: 0.125em solid rgba(255, 255, 255, 0.58);
   outline-offset: 0.2em;
+}
+
+.studio-device-label-compact {
+  display: none;
 }
 
 .studio-onboarding-device,
@@ -1367,15 +1444,35 @@ textarea {
 }
 
 .studio-preview-stage-wrap {
+  position: relative;
   padding-top: 1.25em;
 }
 
 .studio-preview-stage {
+  position: relative;
   overflow: hidden;
   border: 0.0625em solid rgba(255, 255, 255, 0.1);
   border-radius: 0.75em;
   background: rgba(0, 0, 0, 0.3);
   padding: 1.5625em;
+}
+
+.studio-preview-scroll-fade {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: clamp(4em, 8vw, 7em);
+  border-radius: 0 0.75em 0.75em 0;
+  background: linear-gradient(
+    90deg,
+    rgba(12, 12, 12, 0) 0%,
+    rgba(12, 12, 12, 0.68) 64%,
+    rgba(12, 12, 12, 0.96) 100%
+  );
+  pointer-events: none;
+  transition: opacity 180ms ease;
 }
 
 .studio-asset-rail {
@@ -1385,6 +1482,33 @@ textarea {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.25em 0 0.5em;
+}
+
+.studio-asset-rail-nudge {
+  animation: studioRailNudge 780ms cubic-bezier(0.22, 1, 0.36, 1) 520ms both;
+  will-change: transform;
+}
+
+@keyframes studioRailNudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  42% {
+    transform: translateX(-0.875rem);
+  }
+
+  68% {
+    transform: translateX(-0.25rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-asset-rail-nudge {
+    animation: none;
+    will-change: auto;
+  }
 }
 
 /* The helper outline sits outside the card, so give its scroll container a
@@ -2231,6 +2355,54 @@ textarea {
     overflow: visible;
   }
 
+  .studio-header {
+    gap: 0.5em;
+    margin-left: -1.5em;
+    padding-inline: 1.5em;
+  }
+
+  .studio-history-actions {
+    padding: 0.0625rem;
+  }
+
+  .studio-history-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .studio-nav-device-trigger {
+    min-width: 7rem;
+    min-height: 2.75rem;
+    justify-content: space-between;
+    padding: 0.625rem 0.75rem 0.625rem 0.875rem;
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 0 0 0.0625rem rgba(255, 255, 255, 0.03);
+    font-size: 0.8125rem;
+  }
+
+  .studio-nav-device-trigger:hover,
+  .studio-nav-device-trigger[aria-expanded="true"] {
+    border-color: rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .studio-nav-device-trigger .studio-preview-device-chevron {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .studio-nav-device-menu .studio-device-menu-content {
+    min-width: 11.5rem;
+    padding: 0.375rem;
+  }
+
+  .studio-nav-device-menu .studio-device-menu-item {
+    min-height: 2.75rem;
+    padding: 0.6875rem 0.875rem;
+    font-size: 0.875rem;
+  }
+
   .studio-get-started {
     right: 1em;
     bottom: 1em;
@@ -2242,7 +2414,7 @@ textarea {
     z-index: 51;
     top: 0;
     right: 0;
-    width: 80vw;
+    width: min(80vw, 30rem);
     height: 100dvh;
     min-height: 0;
     overflow-y: auto;
@@ -2284,6 +2456,12 @@ textarea {
   .studio-textarea {
     height: 5.5em;
     padding: 0.75em 0.9375em;
+    font-size: 1rem;
+  }
+
+  .studio-swatch-input {
+    width: 4.25rem;
+    font-size: 1rem;
   }
 
   .studio-swatch-row,
@@ -2296,6 +2474,56 @@ textarea {
     padding: 0.875em 0.625em;
   }
 
+  .studio-toggle-selected,
+  .studio-toggle-passive {
+    position: relative;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .studio-toggle-selected::before,
+  .studio-toggle-passive::before {
+    position: absolute;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 0.03125rem solid transparent;
+    border-radius: 0.25rem;
+    background: transparent;
+    content: "";
+    pointer-events: none;
+  }
+
+  .studio-toggle-selected::before {
+    border-color: #727272;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .studio-toggle-selected:hover,
+  .studio-toggle-passive:hover {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .studio-toggle-icon {
+    position: relative;
+    z-index: 1;
+  }
+
+  .studio-sync-switch {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .studio-sync-switch-track {
+    inset: 50% auto auto 50%;
+    width: 2.5em;
+    height: 1.375em;
+    transform: translate(-50%, -50%);
+  }
+
   .studio-upload-panel {
     min-height: 6.25em;
     padding: 1.125em 1.25em;
@@ -2306,13 +2534,13 @@ textarea {
   }
 
   .studio-icon-button {
-    width: 3.125em;
-    height: 3.125em;
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
   .studio-icon-plain-button {
-    width: 2em;
-    height: 2em;
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
   .studio-icon {
@@ -2329,6 +2557,32 @@ textarea {
   .studio-preview-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .studio-preview-scroll-fade {
+    width: 4.5rem;
+  }
+
+  .studio-preview-actions .studio-button,
+  .studio-export-footer .studio-button,
+  .studio-modal-upload-button {
+    min-height: 2.75rem;
+  }
+
+  .studio-panel-close,
+  .studio-modal-close {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .studio-export-select-all {
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+  }
+
+  .studio-add-connector {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
   .studio-modal-backdrop {
@@ -2380,6 +2634,25 @@ textarea {
   .studio-preview-stage-wrap {
     max-width: 100%;
     min-width: 0;
+  }
+}
+
+@media (max-width: 30rem) {
+  .studio-header-actions {
+    gap: 0.375em;
+  }
+
+  .studio-device-label-full {
+    display: none;
+  }
+
+  .studio-device-label-compact {
+    display: inline;
+  }
+
+  .studio-nav-device-trigger {
+    gap: 0.375em;
+    padding-inline: 0.75rem 0.625rem;
   }
 }
 
