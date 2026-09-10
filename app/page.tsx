@@ -90,35 +90,13 @@ type RailCueState = {
   hasMore: boolean;
 };
 
-type WritableExportFile = {
-  write(data: Blob): Promise<void>;
-  close(): Promise<void>;
-};
-
-type ExportFileHandle = {
-  createWritable(): Promise<WritableExportFile>;
-};
-
-type ExportDirectoryHandle = {
-  getFileHandle(
-    name: string,
-    options: { create: true },
-  ): Promise<ExportFileHandle>;
-};
-
-type ExportDirectoryWindow = Window & {
-  showDirectoryPicker?: (options?: {
-    id?: string;
-    mode?: "read" | "readwrite";
-  }) => Promise<ExportDirectoryHandle>;
-};
-
 type GuideStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
 const MAX_HISTORY_STEPS = 10;
 const EXPORT_PICKER_THUMB_WIDTH = 116;
+const EXPORT_SUPERSAMPLE_RATIO = 2;
 const FEATURE_BANNER_EXPORT_ID = "android-feature-banner";
 const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
   "backgroundMode",
@@ -195,20 +173,6 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-}
-
-async function saveBlobsToDirectory(
-  directory: ExportDirectoryHandle,
-  files: { blob: Blob; filename: string }[],
-) {
-  for (const file of files) {
-    const fileHandle = await directory.getFileHandle(file.filename, {
-      create: true,
-    });
-    const writable = await fileHandle.createWritable();
-    await writable.write(file.blob);
-    await writable.close();
-  }
 }
 
 function toArrayBuffer(bytes: Uint8Array) {
@@ -414,6 +378,69 @@ async function waitForNodeImages(node: HTMLElement) {
       });
     }),
   );
+}
+
+async function downsamplePngBlob(
+  sourceBlob: Blob,
+  width: number,
+  height: number,
+) {
+  const sourceUrl = URL.createObjectURL(sourceBlob);
+  const image = new Image();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () =>
+        reject(new Error("Unable to prepare the high-resolution export."));
+      image.src = sourceUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to create the export canvas.");
+    }
+
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+
+        reject(new Error("Unable to finish the PNG export."));
+      }, "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function renderNodeForExport(
+  node: HTMLElement,
+  width: number,
+  height: number,
+) {
+  const supersampledBlob = await toBlob(node, {
+    cacheBust: true,
+    pixelRatio: EXPORT_SUPERSAMPLE_RATIO,
+    width,
+    height,
+  });
+
+  if (!supersampledBlob) {
+    return null;
+  }
+
+  return downsamplePngBlob(supersampledBlob, width, height);
 }
 
 export default function Home() {
@@ -1711,13 +1738,11 @@ export default function Home() {
       window.requestAnimationFrame(() => resolve());
     });
 
-    const blob = await toBlob(node, {
-      cacheBust: true,
-      pixelRatio: 1,
-      skipFonts: true,
-      width: template.exportWidth,
-      height: template.exportHeight,
-    });
+    const blob = await renderNodeForExport(
+      node,
+      template.exportWidth,
+      template.exportHeight,
+    );
 
     if (!blob) {
       return null;
@@ -1743,13 +1768,11 @@ export default function Home() {
       window.requestAnimationFrame(() => resolve());
     });
 
-    const blob = await toBlob(node, {
-      cacheBust: true,
-      pixelRatio: 1,
-      skipFonts: true,
-      width: ANDROID_FEATURE_BANNER_WIDTH,
-      height: ANDROID_FEATURE_BANNER_HEIGHT,
-    });
+    const blob = await renderNodeForExport(
+      node,
+      ANDROID_FEATURE_BANNER_WIDTH,
+      ANDROID_FEATURE_BANNER_HEIGHT,
+    );
 
     if (!blob) {
       return null;
@@ -1774,44 +1797,23 @@ export default function Home() {
     setIsExporting(true);
 
     try {
-      let exportDirectory: ExportDirectoryHandle | null = null;
+      const renderedAssets: {
+        blob: Blob;
+        bytes: Uint8Array;
+        filename: string;
+      }[] = [];
 
-      if (mode === "selected" && assetIds.length > 1) {
-        const showDirectoryPicker = (window as ExportDirectoryWindow)
-          .showDirectoryPicker;
+      for (const assetId of assetIds) {
+        const renderedAsset =
+          assetId === FEATURE_BANNER_EXPORT_ID &&
+          template.platform === "android"
+            ? await renderFeatureBannerExport()
+            : await renderAssetExport(assetId, template);
 
-        if (showDirectoryPicker) {
-          try {
-            exportDirectory = await showDirectoryPicker.call(window, {
-              id: "customer-app-screenshot-export",
-              mode: "readwrite",
-            });
-          } catch (error) {
-            if (
-              error instanceof DOMException &&
-              (error.name === "AbortError" || error.name === "NotAllowedError")
-            ) {
-              return false;
-            }
-
-            console.warn(
-              "Folder selection is unavailable; falling back to browser downloads.",
-              error,
-            );
-          }
+        if (renderedAsset) {
+          renderedAssets.push(renderedAsset);
         }
       }
-
-      const renderedAssets = (
-        await Promise.all(
-          assetIds.map((assetId) =>
-            assetId === FEATURE_BANNER_EXPORT_ID &&
-            template.platform === "android"
-              ? renderFeatureBannerExport()
-              : renderAssetExport(assetId, template),
-          ),
-        )
-      ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
 
       if (!renderedAssets.length) {
         return false;
@@ -1833,19 +1835,24 @@ export default function Home() {
         return true;
       }
 
-      if (exportDirectory) {
-        await saveBlobsToDirectory(exportDirectory, renderedAssets);
-        return true;
-      }
-
       if (renderedAssets.length === 1) {
         downloadBlob(renderedAssets[0].blob, renderedAssets[0].filename);
         return true;
       }
 
-      for (const asset of renderedAssets) {
-        downloadBlob(asset.blob, asset.filename);
-      }
+      const selectedZipBlob = createZipBlob(
+        renderedAssets.map((asset) => ({
+          name: asset.filename,
+          bytes: asset.bytes,
+        })),
+      );
+      downloadBlob(
+        selectedZipBlob,
+        exportBaseName(template) +
+          "-selected-" +
+          (template.platform === "android" ? "assets" : "screens") +
+          ".zip",
+      );
 
       return true;
     } catch (error) {
@@ -3309,7 +3316,8 @@ export default function Home() {
                   id="studio-export-description"
                 >
                   Choose what to export for {activeTemplate.deviceLabel}.
-                  Selected assets are saved as separate PNG files.
+                  Multiple selections download as a ZIP containing separate PNG
+                  files.
                 </p>
               </div>
               <button
