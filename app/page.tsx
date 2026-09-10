@@ -90,6 +90,29 @@ type RailCueState = {
   hasMore: boolean;
 };
 
+type WritableExportFile = {
+  write(data: Blob): Promise<void>;
+  close(): Promise<void>;
+};
+
+type ExportFileHandle = {
+  createWritable(): Promise<WritableExportFile>;
+};
+
+type ExportDirectoryHandle = {
+  getFileHandle(
+    name: string,
+    options: { create: true },
+  ): Promise<ExportFileHandle>;
+};
+
+type ExportDirectoryWindow = Window & {
+  showDirectoryPicker?: (options?: {
+    id?: string;
+    mode?: "read" | "readwrite";
+  }) => Promise<ExportDirectoryHandle>;
+};
+
 type GuideStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const MIN_BACKGROUND_ZOOM = 1;
@@ -172,6 +195,20 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function saveBlobsToDirectory(
+  directory: ExportDirectoryHandle,
+  files: { blob: Blob; filename: string }[],
+) {
+  for (const file of files) {
+    const fileHandle = await directory.getFileHandle(file.filename, {
+      create: true,
+    });
+    const writable = await fileHandle.createWritable();
+    await writable.write(file.blob);
+    await writable.close();
+  }
 }
 
 function toArrayBuffer(bytes: Uint8Array) {
@@ -1660,7 +1697,6 @@ export default function Home() {
 
   async function renderAssetExport(
     assetId: string,
-    mode: "selected" | "all",
     template: IosTemplate,
   ) {
     const node = exportRefs.current[`${template.deviceSlug}:${assetId}`];
@@ -1687,10 +1723,7 @@ export default function Home() {
       return null;
     }
 
-    const filename =
-      mode === "all"
-        ? `${exportBaseName(template)}-screen-${String(assetIndex).padStart(2, "0")}.png`
-        : `${exportBaseName(template)}-selected-${String(assetIndex).padStart(2, "0")}.png`;
+    const filename = `${exportBaseName(template)}-screen-${String(assetIndex).padStart(2, "0")}.png`;
 
     return {
       blob,
@@ -1735,25 +1768,53 @@ export default function Home() {
     template: IosTemplate,
   ) {
     if (!assetIds.length) {
-      return;
+      return false;
     }
 
     setIsExporting(true);
 
     try {
+      let exportDirectory: ExportDirectoryHandle | null = null;
+
+      if (mode === "selected" && assetIds.length > 1) {
+        const showDirectoryPicker = (window as ExportDirectoryWindow)
+          .showDirectoryPicker;
+
+        if (showDirectoryPicker) {
+          try {
+            exportDirectory = await showDirectoryPicker.call(window, {
+              id: "customer-app-screenshot-export",
+              mode: "readwrite",
+            });
+          } catch (error) {
+            if (
+              error instanceof DOMException &&
+              (error.name === "AbortError" || error.name === "NotAllowedError")
+            ) {
+              return false;
+            }
+
+            console.warn(
+              "Folder selection is unavailable; falling back to browser downloads.",
+              error,
+            );
+          }
+        }
+      }
+
       const renderedAssets = (
         await Promise.all(
           assetIds.map((assetId) =>
             assetId === FEATURE_BANNER_EXPORT_ID &&
             template.platform === "android"
               ? renderFeatureBannerExport()
-              : renderAssetExport(assetId, mode, template),
+              : renderAssetExport(assetId, template),
           ),
         )
       ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
 
       if (!renderedAssets.length) {
-        return;
+        return false;
       }
 
       if (mode === "all") {
@@ -1769,24 +1830,31 @@ export default function Home() {
             template.platform === "android" ? "assets" : "screens"
           }.zip`,
         );
-        return;
+        return true;
+      }
+
+      if (exportDirectory) {
+        await saveBlobsToDirectory(exportDirectory, renderedAssets);
+        return true;
       }
 
       if (renderedAssets.length === 1) {
         downloadBlob(renderedAssets[0].blob, renderedAssets[0].filename);
-        return;
+        return true;
       }
 
       for (const asset of renderedAssets) {
         downloadBlob(asset.blob, asset.filename);
-        await new Promise((resolve) => window.setTimeout(resolve, 150));
       }
+
+      return true;
     } catch (error) {
       console.error("Export failed", {
         error,
         assetIds,
         mode,
       });
+      return false;
     } finally {
       setIsExporting(false);
     }
@@ -1797,8 +1865,14 @@ export default function Home() {
       return;
     }
 
-    await exportAssetIds(exportSelectionIds, "selected", activeTemplate);
-    setIsExportModalOpen(false);
+    const didExport = await exportAssetIds(
+      exportSelectionIds,
+      "selected",
+      activeTemplate,
+    );
+    if (didExport) {
+      setIsExportModalOpen(false);
+    }
   }
 
   const exportButtonDisabled = isExporting || assets.length === 0;
@@ -1806,8 +1880,7 @@ export default function Home() {
   const allExportAssetsSelected = availableExportIds.every((id) =>
     exportSelectionIds.includes(id),
   );
-  const downloadAllDisabled =
-    isExporting || !previewPanelSelected || assets.length === 0;
+  const downloadAllDisabled = isExporting || assets.length === 0;
   const deleteDisabled =
     assets.length <= 1 ||
     (selectedAssetIds.length > 0 && selectedAssetIds.length >= assets.length);
@@ -3236,6 +3309,7 @@ export default function Home() {
                   id="studio-export-description"
                 >
                   Choose what to export for {activeTemplate.deviceLabel}.
+                  Selected assets are saved as separate PNG files.
                 </p>
               </div>
               <button
