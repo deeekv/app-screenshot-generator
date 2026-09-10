@@ -75,18 +75,19 @@ function FeatureBannerDevice({
         aria-hidden="true"
         className="absolute overflow-hidden"
         style={{
-          left: "2.979%",
-          top: "1.192%",
-          width: "94.04%",
-          height: "97.81%",
+          left: "2.754%",
+          top: "1.136%",
+          width: "93.847%",
+          height: "97.698%",
           borderRadius: "6.38% / 3.05%",
         }}
       >
         <img
           alt=""
-          className="block h-full w-full object-cover"
+          className="absolute top-0 block h-full max-w-none object-cover"
           src={screenshotForAsset(asset)}
           draggable={false}
+          style={{ left: "-0.18%", width: "100.36%" }}
         />
       </span>
       <img

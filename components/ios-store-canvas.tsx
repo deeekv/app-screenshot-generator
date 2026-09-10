@@ -343,8 +343,17 @@ export function IosStoreCanvas({
             >
               <img
                 alt="Uploaded app screenshot"
-                className="block h-full w-full object-cover"
+                className={`block h-full object-cover ${
+                  template.platform === "android"
+                    ? "absolute top-0 max-w-none"
+                    : "w-full"
+                }`}
                 src={screenshotSrc}
+                style={
+                  template.platform === "android"
+                    ? { left: "-0.18%", width: "100.36%" }
+                    : undefined
+                }
               />
               {!screenshotName ? (
                 <span
@@ -377,8 +386,17 @@ export function IosStoreCanvas({
             >
               <img
                 alt=""
-                className="block h-full w-full object-cover"
+                className={`block h-full object-cover ${
+                  template.platform === "android"
+                    ? "absolute top-0 max-w-none"
+                    : "w-full"
+                }`}
                 src={screenshotSrc}
+                style={
+                  template.platform === "android"
+                    ? { left: "-0.18%", width: "100.36%" }
+                    : undefined
+                }
               />
             </div>
           )}

@@ -105,10 +105,10 @@ export const ANDROID_TEMPLATE = {
   titleFontFamily: "Roboto, Arial, sans-serif",
   screenshotBorderRadius: 48,
   screenshot: {
-    left: 267.182,
-    top: 530.538,
-    width: 707.655,
-    height: 1561.061,
+    left: 265.4895,
+    top: 529.633,
+    width: 706.198,
+    height: 1559.254,
   },
   deviceFrame: {
     left: 244.7685,
