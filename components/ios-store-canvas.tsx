@@ -58,6 +58,15 @@ export function IosStoreCanvas({
 
   const previewHeight = template.exportHeight * scale;
   const previewWidth = template.exportWidth * scale;
+  const screenshotName =
+    template.platform === "android"
+      ? asset.androidScreenshotName
+      : asset.screenshotName;
+  const screenshotSrc = screenshotName
+    ? template.platform === "android"
+      ? asset.androidScreenshotSrc
+      : asset.screenshotSrc
+    : template.placeholderSrc;
 
   const backgroundImageDimensions =
     backgroundImageInfo.src === asset.backgroundImageSrc
@@ -287,7 +296,7 @@ export function IosStoreCanvas({
                 style={{
                   margin: 0,
                   color: asset.titleColor,
-                  fontFamily: 'Helvetica, Arial, sans-serif',
+                  fontFamily: template.titleFontFamily,
                   fontSize: template.title.fontSize,
                   fontWeight: 700,
                   lineHeight: `${template.title.lineHeight}px`,
@@ -302,7 +311,7 @@ export function IosStoreCanvas({
                 style={{
                   margin: 0,
                   color: asset.titleColor,
-                  fontFamily: 'Helvetica, Arial, sans-serif',
+                  fontFamily: template.titleFontFamily,
                   fontSize: template.title.fontSize,
                   fontWeight: 700,
                   lineHeight: `${template.title.lineHeight}px`,
@@ -327,7 +336,7 @@ export function IosStoreCanvas({
                 top: template.screenshot.top,
                 width: template.screenshot.width,
                 height: template.screenshot.height,
-                borderRadius: "40px",
+                borderRadius: `${template.screenshotBorderRadius}px`,
                 cursor: "pointer",
               }}
               aria-label="Upload screenshot"
@@ -335,9 +344,9 @@ export function IosStoreCanvas({
               <img
                 alt="Uploaded app screenshot"
                 className="block h-full w-full object-cover"
-                src={asset.screenshotSrc}
+                src={screenshotSrc}
               />
-              {!asset.screenshotName ? (
+              {!screenshotName ? (
                 <span
                   className={`ios-upload-placeholder-icon ${
                     showUploadCue
@@ -363,13 +372,13 @@ export function IosStoreCanvas({
                 top: template.screenshot.top,
                 width: template.screenshot.width,
                 height: template.screenshot.height,
-                borderRadius: "40px",
+                borderRadius: `${template.screenshotBorderRadius}px`,
               }}
             >
               <img
                 alt=""
                 className="block h-full w-full object-cover"
-                src={asset.screenshotSrc}
+                src={screenshotSrc}
               />
             </div>
           )}
@@ -384,7 +393,7 @@ export function IosStoreCanvas({
               width: template.deviceFrame.width,
               height: template.deviceFrame.height,
             }}
-            src="/assets/ios/frame.png"
+            src={template.deviceFrameSrc}
           />
         </div>
       </div>

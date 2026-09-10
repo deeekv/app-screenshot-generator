@@ -1,6 +1,11 @@
 export const IOS_TEMPLATE = {
+  platform: "ios",
   deviceLabel: "iOS 6.5 inch",
   deviceSlug: "ios-6-5-inch",
+  deviceFrameSrc: "/assets/ios/frame.png",
+  placeholderSrc: "/assets/ios/placeholder.png",
+  titleFontFamily: "Helvetica, Arial, sans-serif",
+  screenshotBorderRadius: 40,
   exportWidth: 1242,
   exportHeight: 2688,
   previewScale: 0.24,
@@ -90,7 +95,35 @@ export const IOS_5_5_TEMPLATE = {
   },
 } as const;
 
-export type IosTemplate = typeof IOS_TEMPLATE | typeof IOS_5_5_TEMPLATE;
+export const ANDROID_TEMPLATE = {
+  ...IOS_5_5_TEMPLATE,
+  platform: "android",
+  deviceLabel: "Android 6.8 inch",
+  deviceSlug: "android-6-8-inch",
+  deviceFrameSrc: "/assets/android/frame.png",
+  placeholderSrc: "/assets/android/placeholder.png",
+  titleFontFamily: "Roboto, Arial, sans-serif",
+  screenshotBorderRadius: 48,
+  screenshot: {
+    left: 267.182,
+    top: 530.538,
+    width: 707.655,
+    height: 1561.061,
+  },
+  deviceFrame: {
+    left: 244.7685,
+    top: 511.51,
+    width: 752.5,
+    height: 1596,
+  },
+} as const;
+
+export type IosTemplate =
+  | typeof IOS_TEMPLATE
+  | typeof IOS_5_5_TEMPLATE
+  | typeof ANDROID_TEMPLATE;
+
+export type StorePlatform = IosTemplate["platform"];
 
 export type IosAssetState = {
   title: string;
@@ -105,6 +138,8 @@ export type IosAssetState = {
   backgroundImageZoom: number;
   screenshotSrc: string;
   screenshotName: string | null;
+  androidScreenshotSrc: string;
+  androidScreenshotName: string | null;
 };
 
 export const defaultIosAssetState: IosAssetState = {
@@ -120,4 +155,6 @@ export const defaultIosAssetState: IosAssetState = {
   backgroundImageZoom: 1,
   screenshotSrc: "/assets/ios/placeholder.png",
   screenshotName: null,
+  androidScreenshotSrc: "/assets/android/placeholder.png",
+  androidScreenshotName: null,
 };

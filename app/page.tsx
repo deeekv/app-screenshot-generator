@@ -11,14 +11,34 @@ import {
   useState,
 } from "react";
 import { toBlob } from "html-to-image";
+import {
+  AndroidFeatureBanner,
+  ANDROID_FEATURE_BANNER_HEIGHT,
+  ANDROID_FEATURE_BANNER_WIDTH,
+  type FeatureBannerSlot,
+} from "@/components/android-feature-banner";
 import { IosStoreCanvas } from "@/components/ios-store-canvas";
 import {
+  ANDROID_TEMPLATE,
   IOS_5_5_TEMPLATE,
   IOS_TEMPLATE,
   defaultIosAssetState,
   type IosAssetState,
   type IosTemplate,
+  type StorePlatform,
 } from "@/lib/ios-template";
+
+const DEVICE_TEMPLATES = [IOS_TEMPLATE, IOS_5_5_TEMPLATE, ANDROID_TEMPLATE] as const;
+
+function formatDeviceLabel(deviceLabel: string) {
+  const [platform, ...details] = deviceLabel.split(" ");
+  return details.length ? `${platform} (${details.join(" ")})` : deviceLabel;
+}
+
+function compactDeviceLabel(deviceLabel: string) {
+  const [, ...details] = deviceLabel.split(" ");
+  return details.join(" ") || deviceLabel;
+}
 
 type AssetItem = IosAssetState & {
   id: string;
@@ -28,6 +48,12 @@ type ColorKey = "titleColor" | "baseColor" | "glowColor";
 type UploadTarget = {
   assetId: string;
   kind: "screenshot" | "backgroundImage";
+  platform: StorePlatform;
+};
+
+type ScreenshotState = {
+  src: string;
+  name: string | null;
 };
 
 type BackgroundCropDraft = {
@@ -70,6 +96,7 @@ const MIN_BACKGROUND_ZOOM = 1;
 const MAX_BACKGROUND_ZOOM = 3;
 const MAX_HISTORY_STEPS = 10;
 const EXPORT_PICKER_THUMB_WIDTH = 116;
+const FEATURE_BANNER_EXPORT_ID = "android-feature-banner";
 const BACKGROUND_STYLE_KEYS = new Set<keyof IosAssetState>([
   "backgroundMode",
   "baseColor",
@@ -96,6 +123,21 @@ function getBackgroundStyle(asset: IosAssetState): BackgroundStyle {
     backgroundImagePositionY: asset.backgroundImagePositionY,
     backgroundImageZoom: asset.backgroundImageZoom,
   };
+}
+
+function getScreenshotState(
+  asset: IosAssetState,
+  platform: StorePlatform,
+): ScreenshotState {
+  return platform === "android"
+    ? {
+        src: asset.androidScreenshotSrc,
+        name: asset.androidScreenshotName,
+      }
+    : {
+        src: asset.screenshotSrc,
+        name: asset.screenshotName,
+      };
 }
 
 const DEFAULT_SCREEN_TITLES = [
@@ -340,10 +382,14 @@ async function waitForNodeImages(node: HTMLElement) {
 export default function Home() {
   const idSeedRef = useRef(DEFAULT_SCREEN_TITLES.length + 1);
   const exportRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const featureBannerExportRef = useRef<HTMLDivElement>(null);
+  const featureBannerTileRef = useRef<HTMLDivElement>(null);
   const previewTileRef = useRef<HTMLDivElement>(null);
   const preview55TileRef = useRef<HTMLDivElement>(null);
+  const previewAndroidTileRef = useRef<HTMLDivElement>(null);
   const previewRailRef = useRef<HTMLDivElement>(null);
   const preview55RailRef = useRef<HTMLDivElement>(null);
+  const previewAndroidRailRef = useRef<HTMLDivElement>(null);
   const cropViewportRef = useRef<HTMLDivElement>(null);
   const nudgedRailSlugsRef = useRef(new Set<string>());
   const cropDragRef = useRef<{
@@ -365,6 +411,7 @@ export default function Home() {
     future: [],
   }));
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [isFeatureBannerSelected, setIsFeatureBannerSelected] = useState(false);
   const [previewPanelSelected, setPreviewPanelSelected] = useState(true);
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -390,6 +437,24 @@ export default function Home() {
   const [preview55Scale, setPreview55Scale] = useState<number>(
     IOS_5_5_TEMPLATE.previewScale,
   );
+  const [previewAndroidScale, setPreviewAndroidScale] = useState<number>(
+    ANDROID_TEMPLATE.previewScale,
+  );
+  const [featureBannerScale, setFeatureBannerScale] = useState(0.6);
+  const [activeFeatureBannerSlot, setActiveFeatureBannerSlot] =
+    useState<FeatureBannerSlot | null>(null);
+  const [featureBannerSelection, setFeatureBannerSelection] = useState<
+    Record<FeatureBannerSlot, string | null>
+  >({
+    left: "asset-2",
+    center: "asset-1",
+    right: "asset-3",
+  });
+  const [featureBannerBackground, setFeatureBannerBackground] =
+    useState<IosAssetState>(() => ({
+      ...defaultIosAssetState,
+      title: "Feature banner",
+    }));
   const [activeDeviceSlug, setActiveDeviceSlug] = useState<string>(
     IOS_TEMPLATE.deviceSlug,
   );
@@ -418,6 +483,7 @@ export default function Home() {
   >({
     [IOS_TEMPLATE.deviceSlug]: { hasOverflow: false, hasMore: false },
     [IOS_5_5_TEMPLATE.deviceSlug]: { hasOverflow: false, hasMore: false },
+    [ANDROID_TEMPLATE.deviceSlug]: { hasOverflow: false, hasMore: false },
   });
 
   const assets = history.present;
@@ -438,9 +504,49 @@ export default function Home() {
     selectedAssetIds.length === 1 ? primarySelectedAsset : null;
 
   const activeTemplate =
-    activeDeviceSlug === IOS_5_5_TEMPLATE.deviceSlug
-      ? IOS_5_5_TEMPLATE
-      : IOS_TEMPLATE;
+    DEVICE_TEMPLATES.find((template) => template.deviceSlug === activeDeviceSlug) ??
+    IOS_TEMPLATE;
+  const compactTemplate =
+    activeDeviceSlug === ANDROID_TEMPLATE.deviceSlug
+      ? ANDROID_TEMPLATE
+      : IOS_5_5_TEMPLATE;
+  const compactPreviewScale =
+    compactTemplate.deviceSlug === ANDROID_TEMPLATE.deviceSlug
+      ? previewAndroidScale
+      : preview55Scale;
+  const compactTileRef =
+    compactTemplate.deviceSlug === ANDROID_TEMPLATE.deviceSlug
+      ? previewAndroidTileRef
+      : preview55TileRef;
+  const compactRailRef =
+    compactTemplate.deviceSlug === ANDROID_TEMPLATE.deviceSlug
+      ? previewAndroidRailRef
+      : preview55RailRef;
+  const editableScreenshot = editableAsset
+    ? getScreenshotState(editableAsset, activeTemplate.platform)
+    : null;
+  const featureBannerScreens = useMemo(() => {
+    const resolveAsset = (assetId: string | null, fallbackIndex: number) =>
+      assets.find((asset) => asset.id === assetId) ??
+      assets[fallbackIndex] ??
+      assets[0] ??
+      null;
+
+    return {
+      left: resolveAsset(featureBannerSelection.left, 1),
+      center: resolveAsset(featureBannerSelection.center, 0),
+      right: resolveAsset(featureBannerSelection.right, 2),
+    };
+  }, [assets, featureBannerSelection]);
+  const availableExportIds = useMemo(
+    () => [
+      ...assets.map((asset) => asset.id),
+      ...(activeTemplate.platform === "android"
+        ? [FEATURE_BANNER_EXPORT_ID]
+        : []),
+    ],
+    [activeTemplate.platform, assets],
+  );
 
   const cropAsset = useMemo(
     () => assets.find((asset) => asset.id === cropAssetId) ?? null,
@@ -531,8 +637,7 @@ export default function Home() {
   }
 
   function renderDeviceMenu() {
-    const devices = [IOS_TEMPLATE, IOS_5_5_TEMPLATE];
-    const activeDevice = devices.find(
+    const activeDevice = DEVICE_TEMPLATES.find(
       (device) => device.deviceSlug === activeDeviceSlug,
     )!;
 
@@ -552,10 +657,10 @@ export default function Home() {
           }}
         >
           <span className="studio-device-label-full" aria-hidden="true">
-            {activeDevice.deviceLabel.replace("iOS ", "iOS (") + ")"}
+            {formatDeviceLabel(activeDevice.deviceLabel)}
           </span>
           <span className="studio-device-label-compact" aria-hidden="true">
-            {activeDevice.deviceLabel.replace("iOS ", "")}
+            {compactDeviceLabel(activeDevice.deviceLabel)}
           </span>
           <img
             src="/assets/icon-chevron-down-medium.svg"
@@ -568,7 +673,7 @@ export default function Home() {
         </button>
         {isDeviceMenuOpen ? (
           <div className="studio-device-menu-content" role="menu">
-            {devices.map((device) => {
+            {DEVICE_TEMPLATES.map((device) => {
               const isActive = device.deviceSlug === activeDeviceSlug;
               return (
                 <button
@@ -583,12 +688,17 @@ export default function Home() {
                     event.stopPropagation();
                     setActiveDeviceSlug(device.deviceSlug);
                     setIsDeviceMenuOpen(false);
+                    if (device.platform !== "android") {
+                      setIsFeatureBannerSelected(false);
+                      setActiveFeatureBannerSlot(null);
+                      setPreviewPanelSelected(true);
+                    }
                     if (guideStep === 6) {
                       dismissGuide();
                     }
                   }}
                 >
-                  <span>{device.deviceLabel.replace("iOS ", "iOS (") + ")"}</span>
+                  <span>{formatDeviceLabel(device.deviceLabel)}</span>
                 </button>
               );
             })}
@@ -714,6 +824,7 @@ export default function Home() {
     const rails = [
       [IOS_TEMPLATE.deviceSlug, previewRailRef.current],
       [IOS_5_5_TEMPLATE.deviceSlug, preview55RailRef.current],
+      [ANDROID_TEMPLATE.deviceSlug, previewAndroidRailRef.current],
     ] as const;
     const updateAll = () => {
       rails.forEach(([deviceSlug, rail]) => updateRailCue(deviceSlug, rail));
@@ -771,22 +882,39 @@ export default function Home() {
   }
 
   useEffect(() => {
-    function closeDeviceMenu(event: MouseEvent) {
-      if (!(event.target as HTMLElement).closest(".studio-device-menu")) {
+    function closeMenus(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest(".studio-device-menu")) {
         setIsDeviceMenuOpen(false);
+      }
+
+      const clickedBanner = target.closest(".studio-feature-banner-card");
+      const clickedEditor = target.closest(".studio-side-menu");
+      const clickedModal = target.closest(".studio-modal-backdrop");
+      if (!clickedBanner && !clickedEditor && !clickedModal) {
+        setActiveFeatureBannerSlot(null);
+        setIsFeatureBannerSelected(false);
+        setPreviewPanelSelected(true);
+      } else if (
+        !target.closest(
+          ".studio-feature-banner-picker, [data-feature-banner-slot]",
+        )
+      ) {
+        setActiveFeatureBannerSlot(null);
       }
     }
 
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsDeviceMenuOpen(false);
+        setActiveFeatureBannerSlot(null);
       }
     }
 
-    document.addEventListener("mousedown", closeDeviceMenu);
+    document.addEventListener("mousedown", closeMenus);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("mousedown", closeDeviceMenu);
+      document.removeEventListener("mousedown", closeMenus);
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, []);
@@ -795,6 +923,7 @@ export default function Home() {
     const previews = [
       [previewTileRef.current, IOS_TEMPLATE, setPreviewScale],
       [preview55TileRef.current, IOS_5_5_TEMPLATE, setPreview55Scale],
+      [previewAndroidTileRef.current, ANDROID_TEMPLATE, setPreviewAndroidScale],
     ] as const;
     const observers = previews.flatMap(([element, template, setScale]) => {
       if (!element) return [];
@@ -809,7 +938,29 @@ export default function Home() {
     });
 
     return () => observers.forEach((observer) => observer.disconnect());
-  }, []);
+  }, [activeDeviceSlug]);
+
+  useEffect(() => {
+    if (activeDeviceSlug !== ANDROID_TEMPLATE.deviceSlug) {
+      return;
+    }
+
+    const element = featureBannerTileRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateScale = () => {
+      const width = element.getBoundingClientRect().width;
+      if (width) {
+        setFeatureBannerScale(width / ANDROID_FEATURE_BANNER_WIDTH);
+      }
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [activeDeviceSlug]);
 
   useEffect(() => {
     const viewport = cropViewportRef.current;
@@ -865,27 +1016,38 @@ export default function Home() {
   }, [assets]);
 
   useEffect(() => {
-    if (!editableAsset) {
+    const colorTarget = isFeatureBannerSelected
+      ? featureBannerBackground
+      : editableAsset;
+    if (!colorTarget) {
       setEditingTitleAssetId(null);
       return;
     }
 
     setColorDrafts({
-      titleColor: hexLabel(editableAsset.titleColor),
-      baseColor: hexLabel(editableAsset.baseColor),
-      glowColor: hexLabel(editableAsset.glowColor),
+      titleColor: hexLabel(colorTarget.titleColor),
+      baseColor: hexLabel(colorTarget.baseColor),
+      glowColor: hexLabel(colorTarget.glowColor),
     });
 
-    if (editingTitleAssetId && editingTitleAssetId !== editableAsset.id) {
+    if (
+      editingTitleAssetId &&
+      (!editableAsset || editingTitleAssetId !== editableAsset.id)
+    ) {
       setEditingTitleAssetId(null);
     }
-  }, [editableAsset, editingTitleAssetId]);
+  }, [
+    editableAsset,
+    editingTitleAssetId,
+    featureBannerBackground,
+    isFeatureBannerSelected,
+  ]);
 
   useEffect(() => {
-    if (!selectedAssetIds.length) {
+    if (!selectedAssetIds.length && !isFeatureBannerSelected) {
       setPreviewPanelSelected(true);
     }
-  }, [selectedAssetIds]);
+  }, [isFeatureBannerSelected, selectedAssetIds]);
 
   function nextId() {
     const id = `asset-${idSeedRef.current}`;
@@ -907,9 +1069,15 @@ export default function Home() {
           shouldSyncBackground || asset.id === assetId
             ? { ...asset, [key]: value }
             : asset,
-        ),
+      ),
       historyGroup,
     );
+    if (shouldSyncBackground) {
+      setFeatureBannerBackground((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    }
   }
 
   function updateBackgroundStyle(
@@ -923,26 +1091,76 @@ export default function Home() {
           : asset,
       ),
     );
+    if (keepBackgroundsSynced) {
+      setFeatureBannerBackground((current) => ({ ...current, ...patch }));
+    }
+  }
+
+  function updateFeatureBannerBackground(patch: Partial<BackgroundStyle>) {
+    setFeatureBannerBackground((current) => ({ ...current, ...patch }));
+    if (keepBackgroundsSynced) {
+      commitAssets((current) =>
+        current.map((asset) => ({ ...asset, ...patch })),
+      );
+    }
   }
 
   function toggleBackgroundSync() {
     const nextSyncState = !keepBackgroundsSynced;
-    if (nextSyncState && editableAsset) {
-      const sharedBackground = getBackgroundStyle(editableAsset);
-      commitAssets((current) =>
-        current.map((asset) => ({ ...asset, ...sharedBackground })),
-      );
+    if (nextSyncState) {
+      const sharedBackground = isFeatureBannerSelected
+        ? getBackgroundStyle(featureBannerBackground)
+        : editableAsset
+          ? getBackgroundStyle(editableAsset)
+          : null;
+      if (sharedBackground) {
+        commitAssets((current) =>
+          current.map((asset) => ({ ...asset, ...sharedBackground })),
+        );
+        setFeatureBannerBackground((current) => ({
+          ...current,
+          ...sharedBackground,
+        }));
+      }
     }
     setKeepBackgroundsSynced(nextSyncState);
   }
 
   function selectPreviewPanel() {
     setSelectedAssetIds([]);
+    setIsFeatureBannerSelected(false);
+    setActiveFeatureBannerSlot(null);
     setPreviewPanelSelected(true);
+  }
+
+  function selectFeatureBanner() {
+    setSelectedAssetIds([]);
+    setIsFeatureBannerSelected(true);
+    setPreviewPanelSelected(false);
+  }
+
+  function openFeatureBannerPicker(slot: FeatureBannerSlot) {
+    selectFeatureBanner();
+    setActiveFeatureBannerSlot((current) =>
+      current === slot ? null : slot,
+    );
+  }
+
+  function selectFeatureBannerScreen(
+    slot: FeatureBannerSlot,
+    assetId: string,
+  ) {
+    setFeatureBannerSelection((current) => ({
+      ...current,
+      [slot]: assetId,
+    }));
+    setActiveFeatureBannerSlot(null);
   }
 
   function closeSidePanel() {
     setSelectedAssetIds([]);
+    setIsFeatureBannerSelected(false);
+    setActiveFeatureBannerSlot(null);
     setPreviewPanelSelected(true);
     setEditingTitleAssetId(null);
   }
@@ -992,6 +1210,8 @@ export default function Home() {
   }
 
   function selectAsset(assetId: string, withRangeSelection: boolean) {
+    setIsFeatureBannerSelected(false);
+    setActiveFeatureBannerSlot(null);
     setPreviewPanelSelected(false);
     setSelectedAssetIds((current) => {
       if (withRangeSelection) {
@@ -1071,8 +1291,12 @@ export default function Home() {
     setPreviewPanelSelected(true);
   }
 
-  function openUploadModal(assetId: string, kind: UploadTarget["kind"]) {
-    setUploadTarget({ assetId, kind });
+  function openUploadModal(
+    assetId: string,
+    kind: UploadTarget["kind"],
+    platform: StorePlatform = activeTemplate.platform,
+  ) {
+    setUploadTarget({ assetId, kind, platform });
     setPendingUploadName(null);
     setIsUploadModalOpen(true);
   }
@@ -1213,33 +1437,53 @@ export default function Home() {
       const dataUrl = await fileToDataUrl(file);
 
       if (uploadTarget.kind === "backgroundImage") {
-        updateBackgroundStyle(uploadTarget.assetId, {
+        const backgroundPatch: Partial<BackgroundStyle> = {
           backgroundMode: "image",
           backgroundImageSrc: dataUrl,
           backgroundImageName: file.name,
           backgroundImagePositionX: 0,
           backgroundImagePositionY: 0,
           backgroundImageZoom: 1,
-        });
+        };
+        if (uploadTarget.assetId === FEATURE_BANNER_EXPORT_ID) {
+          updateFeatureBannerBackground(backgroundPatch);
+        } else {
+          updateBackgroundStyle(uploadTarget.assetId, backgroundPatch);
+        }
       } else {
         commitAssets((current) =>
           current.map((asset) =>
             asset.id === uploadTarget.assetId
-              ? {
-                  ...asset,
-                  screenshotSrc: dataUrl,
-                  screenshotName: file.name,
-                }
+              ? uploadTarget.platform === "android"
+                ? {
+                    ...asset,
+                    androidScreenshotSrc: dataUrl,
+                    androidScreenshotName: file.name,
+                  }
+                : {
+                    ...asset,
+                    screenshotSrc: dataUrl,
+                    screenshotName: file.name,
+                  }
               : asset,
           ),
         );
       }
-      setSelectedAssetIds([uploadTarget.assetId]);
+      if (uploadTarget.assetId === FEATURE_BANNER_EXPORT_ID) {
+        setSelectedAssetIds([]);
+        setIsFeatureBannerSelected(true);
+      } else {
+        setSelectedAssetIds([uploadTarget.assetId]);
+        setIsFeatureBannerSelected(false);
+      }
       setPreviewPanelSelected(false);
       if (uploadTarget.kind === "screenshot" && guideStep === 2) {
         advanceGuide(3);
       }
-      if (uploadTarget.kind === "backgroundImage") {
+      if (
+        uploadTarget.kind === "backgroundImage" &&
+        uploadTarget.assetId !== FEATURE_BANNER_EXPORT_ID
+      ) {
         setCropDraft({ positionX: 0, positionY: 0, zoom: 1 });
         setCropImageDimensions({ width: 0, height: 0 });
         setCropAssetId(uploadTarget.assetId);
@@ -1307,7 +1551,9 @@ export default function Home() {
     setColorDrafts((current) => ({ ...current, [key]: normalized }));
 
     const nextColor = toHexColor(normalized);
-    if (editableAsset && nextColor) {
+    if (isFeatureBannerSelected && nextColor && key !== "titleColor") {
+      updateFeatureBannerBackground({ [key]: nextColor });
+    } else if (editableAsset && nextColor) {
       updateAsset(
         editableAsset.id,
         key,
@@ -1345,15 +1591,32 @@ export default function Home() {
     }
   }
 
-  function clearScreenshot(assetId: string) {
+  function clearFeatureBannerBackgroundImage() {
+    updateFeatureBannerBackground({
+      backgroundMode: "gradient",
+      backgroundImageSrc: null,
+      backgroundImageName: null,
+      backgroundImagePositionX: 0,
+      backgroundImagePositionY: 0,
+      backgroundImageZoom: 1,
+    });
+  }
+
+  function clearScreenshot(assetId: string, platform: StorePlatform) {
     commitAssets((current) =>
       current.map((asset) =>
         asset.id === assetId
-          ? {
-              ...asset,
-              screenshotSrc: defaultIosAssetState.screenshotSrc,
-              screenshotName: null,
-            }
+          ? platform === "android"
+            ? {
+                ...asset,
+                androidScreenshotSrc: defaultIosAssetState.androidScreenshotSrc,
+                androidScreenshotName: null,
+              }
+            : {
+                ...asset,
+                screenshotSrc: defaultIosAssetState.screenshotSrc,
+                screenshotName: null,
+              }
           : asset,
       ),
     );
@@ -1366,7 +1629,7 @@ export default function Home() {
     setExportSelectionIds(
       availableSelectedIds.length > 0
         ? availableSelectedIds
-        : assets.map((asset) => asset.id),
+        : availableExportIds,
     );
     setIsExportModalOpen(true);
   }
@@ -1389,7 +1652,9 @@ export default function Home() {
 
   function toggleAllExportAssets() {
     setExportSelectionIds((current) =>
-      current.length === assets.length ? [] : assets.map((asset) => asset.id),
+      availableExportIds.every((id) => current.includes(id))
+        ? []
+        : availableExportIds,
     );
   }
 
@@ -1434,6 +1699,36 @@ export default function Home() {
     };
   }
 
+  async function renderFeatureBannerExport() {
+    const node = featureBannerExportRef.current;
+    if (!node) {
+      return null;
+    }
+
+    await waitForNodeImages(node);
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+
+    const blob = await toBlob(node, {
+      cacheBust: true,
+      pixelRatio: 1,
+      skipFonts: true,
+      width: ANDROID_FEATURE_BANNER_WIDTH,
+      height: ANDROID_FEATURE_BANNER_HEIGHT,
+    });
+
+    if (!blob) {
+      return null;
+    }
+
+    return {
+      blob,
+      bytes: new Uint8Array(await blob.arrayBuffer()),
+      filename: `${exportBaseName(ANDROID_TEMPLATE)}-feature-banner.png`,
+    };
+  }
+
   async function exportAssetIds(
     assetIds: string[],
     mode: "selected" | "all",
@@ -1448,7 +1743,12 @@ export default function Home() {
     try {
       const renderedAssets = (
         await Promise.all(
-          assetIds.map((assetId) => renderAssetExport(assetId, mode, template)),
+          assetIds.map((assetId) =>
+            assetId === FEATURE_BANNER_EXPORT_ID &&
+            template.platform === "android"
+              ? renderFeatureBannerExport()
+              : renderAssetExport(assetId, mode, template),
+          ),
         )
       ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
 
@@ -1463,7 +1763,12 @@ export default function Home() {
             bytes: asset.bytes,
           })),
         );
-        downloadBlob(zipBlob, `${exportBaseName(template)}-screens.zip`);
+        downloadBlob(
+          zipBlob,
+          `${exportBaseName(template)}-${
+            template.platform === "android" ? "assets" : "screens"
+          }.zip`,
+        );
         return;
       }
 
@@ -1498,13 +1803,15 @@ export default function Home() {
 
   const exportButtonDisabled = isExporting || assets.length === 0;
   const exportButtonLabel = isExporting ? "Exporting..." : "Export";
-  const allExportAssetsSelected = exportSelectionIds.length === assets.length;
+  const allExportAssetsSelected = availableExportIds.every((id) =>
+    exportSelectionIds.includes(id),
+  );
   const downloadAllDisabled =
     isExporting || !previewPanelSelected || assets.length === 0;
   const deleteDisabled =
     assets.length <= 1 ||
     (selectedAssetIds.length > 0 && selectedAssetIds.length >= assets.length);
-  const sidePanelOpen = Boolean(editableAsset);
+  const sidePanelOpen = Boolean(editableAsset) || isFeatureBannerSelected;
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
   const canGuideGoNext =
@@ -1639,6 +1946,311 @@ export default function Home() {
                   </button>
                 </div>
 
+                {isFeatureBannerSelected ? (
+                  <>
+                    <div className="studio-selection-meta">Feature banner</div>
+
+                    <div className="studio-controls">
+                      <section className="studio-section studio-section-bordered">
+                        <p className="studio-section-label">Background</p>
+
+                        <div className="studio-mode-panel">
+                          <div className="studio-mode-row">
+                            <p className="studio-mode-value">
+                              {featureBannerBackground.backgroundMode === "image"
+                                ? "Image"
+                                : "Gradient"}
+                            </p>
+
+                            <div className="studio-toggle-group">
+                              <button
+                                type="button"
+                                className={`studio-background-toggle ${
+                                  featureBannerBackground.backgroundMode ===
+                                  "gradient"
+                                    ? "studio-toggle-selected"
+                                    : "studio-toggle-passive"
+                                }`}
+                                onClick={() =>
+                                  updateFeatureBannerBackground({
+                                    backgroundMode: "gradient",
+                                  })
+                                }
+                                aria-label="Use gradient background"
+                              >
+                                <img
+                                  src="/assets/gradient-icon.svg"
+                                  alt=""
+                                  className="studio-toggle-icon"
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                className={`studio-background-toggle ${
+                                  featureBannerBackground.backgroundMode === "image"
+                                    ? "studio-toggle-selected"
+                                    : "studio-toggle-passive"
+                                }`}
+                                onClick={() =>
+                                  updateFeatureBannerBackground({
+                                    backgroundMode: "image",
+                                  })
+                                }
+                                aria-label="Use image background"
+                              >
+                                <img
+                                  src="/assets/image-icon.svg"
+                                  alt=""
+                                  className={`studio-toggle-icon studio-toggle-icon-image ${
+                                    featureBannerBackground.backgroundMode === "image"
+                                      ? "studio-toggle-icon-image-active"
+                                      : "studio-toggle-icon-image-passive"
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="studio-background-mode-body">
+                            {featureBannerBackground.backgroundMode === "image" ? (
+                              <div className="studio-background-image-controls">
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() =>
+                                    openUploadModal(
+                                      FEATURE_BANNER_EXPORT_ID,
+                                      "backgroundImage",
+                                      "android",
+                                    )
+                                  }
+                                  onKeyDown={(event) =>
+                                    triggerClickablePanel(event, () =>
+                                      openUploadModal(
+                                        FEATURE_BANNER_EXPORT_ID,
+                                        "backgroundImage",
+                                        "android",
+                                      ),
+                                    )
+                                  }
+                                  className="studio-background-upload-row"
+                                >
+                                  <span className="studio-background-upload-copy">
+                                    {featureBannerBackground.backgroundImageName
+                                      ? "Background image"
+                                      : "Upload background image"}
+                                  </span>
+                                  <span className="studio-upload-icon" aria-hidden="true">
+                                    {featureBannerBackground.backgroundImageSrc ? (
+                                      <span className="studio-upload-thumb-wrap">
+                                        <img
+                                          src={
+                                            featureBannerBackground.backgroundImageSrc
+                                          }
+                                          alt=""
+                                          className="studio-upload-thumb"
+                                        />
+                                        <button
+                                          type="button"
+                                          className="studio-upload-thumb-remove"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            clearFeatureBannerBackgroundImage();
+                                          }}
+                                          aria-label="Remove feature banner background"
+                                        >
+                                          <span
+                                            className="studio-upload-thumb-remove-icon"
+                                            aria-hidden="true"
+                                          >
+                                            <span className="studio-panel-close-line" />
+                                            <span className="studio-panel-close-line" />
+                                          </span>
+                                        </button>
+                                      </span>
+                                    ) : (
+                                      <img
+                                        src="/assets/upload-combined.svg"
+                                        alt=""
+                                        className="studio-upload-icon-combined"
+                                      />
+                                    )}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="studio-swatch-row">
+                                  <span className="studio-field-label">
+                                    Base colour:
+                                  </span>
+                                  <label className="studio-swatch">
+                                    <span className="studio-swatch-chip">
+                                      <input
+                                        type="color"
+                                        value={featureBannerBackground.baseColor}
+                                        onChange={(event) =>
+                                          updateFeatureBannerBackground({
+                                            baseColor: event.target.value,
+                                          })
+                                        }
+                                        className="studio-color-input"
+                                      />
+                                    </span>
+                                    <input
+                                      type="text"
+                                      inputMode="text"
+                                      value={colorDrafts.baseColor}
+                                      onChange={(event) =>
+                                        handleColorDraftChange(
+                                          "baseColor",
+                                          event.target.value,
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        resetColorDraft(
+                                          "baseColor",
+                                          featureBannerBackground.baseColor,
+                                        )
+                                      }
+                                      className="studio-swatch-input"
+                                      aria-label="Feature banner base colour hex code"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="studio-swatch-row">
+                                  <span className="studio-field-label">
+                                    Glow colour:
+                                  </span>
+                                  <label className="studio-swatch">
+                                    <span className="studio-swatch-chip">
+                                      <input
+                                        type="color"
+                                        value={featureBannerBackground.glowColor}
+                                        onChange={(event) =>
+                                          updateFeatureBannerBackground({
+                                            glowColor: event.target.value,
+                                          })
+                                        }
+                                        className="studio-color-input"
+                                      />
+                                    </span>
+                                    <input
+                                      type="text"
+                                      inputMode="text"
+                                      value={colorDrafts.glowColor}
+                                      onChange={(event) =>
+                                        handleColorDraftChange(
+                                          "glowColor",
+                                          event.target.value,
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        resetColorDraft(
+                                          "glowColor",
+                                          featureBannerBackground.glowColor,
+                                        )
+                                      }
+                                      className="studio-swatch-input"
+                                      aria-label="Feature banner glow colour hex code"
+                                    />
+                                  </label>
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          <div className="studio-background-sync-row">
+                            <span className="studio-background-sync-copy">
+                              <span className="studio-background-sync-title">
+                                Keep backgrounds synced
+                              </span>
+                              <button
+                                type="button"
+                                className="studio-background-sync-info"
+                                data-tooltip={
+                                  keepBackgroundsSynced
+                                    ? "Background changes apply to the feature banner and all screens, including new ones."
+                                    : "Use this background on the feature banner and all screens, including new ones."
+                                }
+                                aria-label={
+                                  keepBackgroundsSynced
+                                    ? "Background sync on. Changes apply to the feature banner and all screens."
+                                    : "Background sync off. Turn on to apply changes to the feature banner and all screens."
+                                }
+                              >
+                                <svg
+                                  aria-hidden="true"
+                                  viewBox="0 0 16 16"
+                                  fill="none"
+                                >
+                                  <circle cx="8" cy="8" r="6.25" />
+                                  <path d="M8 7.25v3.5" />
+                                  <path d="M8 5.15h.01" />
+                                </svg>
+                              </button>
+                            </span>
+                            <button
+                              type="button"
+                              className={`studio-sync-switch ${
+                                keepBackgroundsSynced
+                                  ? "studio-sync-switch-on"
+                                  : ""
+                              }`}
+                              role="switch"
+                              aria-checked={keepBackgroundsSynced}
+                              aria-label="Keep backgrounds synced"
+                              onClick={toggleBackgroundSync}
+                            >
+                              <span className="studio-sync-switch-track">
+                                <span className="studio-sync-switch-thumb" />
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="studio-section">
+                        <p className="studio-section-label">Device screens</p>
+                        <div className="studio-feature-banner-screen-selectors">
+                          {(["left", "center", "right"] as const).map(
+                            (slot) => (
+                              <label
+                                key={slot}
+                                className="studio-feature-banner-screen-field"
+                              >
+                                <span className="studio-field-label">
+                                  {slot === "center"
+                                    ? "Main device"
+                                    : `${slot[0].toUpperCase()}${slot.slice(1)} device`}
+                                </span>
+                                <select
+                                  className="studio-feature-banner-screen-select"
+                                  value={featureBannerScreens[slot]?.id ?? ""}
+                                  onChange={(event) =>
+                                    selectFeatureBannerScreen(
+                                      slot,
+                                      event.target.value,
+                                    )
+                                  }
+                                >
+                                  {assets.map((asset, index) => (
+                                    <option key={asset.id} value={asset.id}>
+                                      Screen {index + 1} —{" "}
+                                      {asset.title.replace(/\n/g, " ")}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ),
+                          )}
+                        </div>
+                      </section>
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <div className="studio-selection-meta">
                   Screen{" "}
                   {assets.findIndex((asset) => asset.id === editableAsset!.id) + 1}
@@ -1947,13 +2559,13 @@ export default function Home() {
                             className="studio-background-sync-info"
                             data-tooltip={
                               keepBackgroundsSynced
-                                ? "Background changes apply to all screens, including new ones."
-                                : "Use this background on all screens, including new ones."
+                                ? "Background changes apply to all screens and the feature banner, including new screens."
+                                : "Use this background on all screens and the feature banner, including new screens."
                             }
                             aria-label={
                               keepBackgroundsSynced
-                                ? "Background sync on. Changes apply to all screens."
-                                : "Background sync off. Turn on to apply changes to all screens."
+                                ? "Background sync on. Changes apply to all screens and the feature banner."
+                                : "Background sync off. Turn on to apply changes to all screens and the feature banner."
                             }
                           >
                             <svg
@@ -1992,7 +2604,9 @@ export default function Home() {
                   </section>
 
                   <section className="studio-section studio-section-bordered">
-                    <p className="studio-section-label">Screenshot</p>
+                    <p className="studio-section-label">
+                      {activeTemplate.platform === "android" ? "Android" : "iOS"} screenshot
+                    </p>
 
                     <div
                       role="button"
@@ -2007,16 +2621,16 @@ export default function Home() {
                     >
                       <span className="studio-upload-row">
                         <span className="studio-upload-copy">
-                          {editableAsset!.screenshotName
-                            ? editableAsset!.screenshotName
+                          {editableScreenshot?.name
+                            ? editableScreenshot.name
                             : "Upload here or click the phone screen"}
                         </span>
 
                         <span className="studio-upload-icon" aria-hidden="true">
-                          {editableAsset!.screenshotName ? (
+                          {editableScreenshot?.name ? (
                             <span className="studio-upload-thumb-wrap">
                               <img
-                                src={editableAsset!.screenshotSrc}
+                                src={editableScreenshot.src}
                                 alt=""
                                 className="studio-upload-thumb"
                               />
@@ -2025,7 +2639,10 @@ export default function Home() {
                                 className="studio-upload-thumb-remove"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  clearScreenshot(editableAsset!.id);
+                                  clearScreenshot(
+                                    editableAsset!.id,
+                                    activeTemplate.platform,
+                                  );
                                 }}
                                 data-tooltip="Remove file"
                                 title="Remove file"
@@ -2075,6 +2692,8 @@ export default function Home() {
                     </div>
                   </section>
                 </div>
+                  </>
+                )}
               </aside>
               </>
             ) : null}
@@ -2090,7 +2709,7 @@ export default function Home() {
                 <div className="studio-preview-title-stack">
                   <p className="studio-preview-eyebrow">Preview</p>
                   <h2 className="studio-preview-title">
-                    {IOS_TEMPLATE.deviceLabel.replace("iOS ", "iOS (") + ")"}
+                    {formatDeviceLabel(IOS_TEMPLATE.deviceLabel)}
                   </h2>
                 </div>
 
@@ -2221,7 +2840,7 @@ export default function Home() {
                                   isGuideVisible &&
                                   guideStep === 2 &&
                                   asset.id === guideAssetId &&
-                                  !asset.screenshotName
+                                  !getScreenshotState(asset, IOS_TEMPLATE.platform).name
                                 }
                                 isTitleEditing={editingTitleAssetId === asset.id}
                                 titleDraft={
@@ -2304,13 +2923,13 @@ export default function Home() {
                 sidePanelOpen ? "studio-preview-panel-below" : "studio-preview-panel-full"
               } ${previewPanelSelected ? "studio-preview-panel-selected" : ""}`}
               onClick={selectPreviewPanel}
-              hidden={activeDeviceSlug !== IOS_5_5_TEMPLATE.deviceSlug}
+              hidden={activeDeviceSlug === IOS_TEMPLATE.deviceSlug}
             >
               <div className="studio-preview-toolbar">
                 <div className="studio-preview-title-stack">
                   <p className="studio-preview-eyebrow">Preview</p>
                   <h2 className="studio-preview-title">
-                    {IOS_5_5_TEMPLATE.deviceLabel.replace("iOS ", "iOS (") + ")"}
+                    {formatDeviceLabel(compactTemplate.deviceLabel)}
                   </h2>
                 </div>
 
@@ -2331,9 +2950,14 @@ export default function Home() {
                     onClick={(event) => {
                       event.stopPropagation();
                       void exportAssetIds(
-                        assets.map((asset) => asset.id),
+                        [
+                          ...assets.map((asset) => asset.id),
+                          ...(compactTemplate.platform === "android"
+                            ? [FEATURE_BANNER_EXPORT_ID]
+                            : []),
+                        ],
                         "all",
-                        IOS_5_5_TEMPLATE,
+                        compactTemplate,
                       );
                     }}
                     disabled={downloadAllDisabled}
@@ -2347,9 +2971,9 @@ export default function Home() {
               <div className="studio-preview-stage-wrap">
                 <div className="studio-preview-stage">
                   <div
-                    ref={preview55RailRef}
+                    ref={compactRailRef}
                     className={`studio-asset-rail ${
-                      nudgingRailSlug === IOS_5_5_TEMPLATE.deviceSlug
+                      nudgingRailSlug === compactTemplate.deviceSlug
                         ? "studio-asset-rail-nudge"
                         : ""
                     } ${
@@ -2357,13 +2981,13 @@ export default function Home() {
                     }`}
                     onClick={selectPreviewPanel}
                     onAnimationEnd={() => {
-                      if (nudgingRailSlug === IOS_5_5_TEMPLATE.deviceSlug) {
+                      if (nudgingRailSlug === compactTemplate.deviceSlug) {
                         setNudgingRailSlug(null);
                       }
                     }}
                     onScroll={(event) =>
                       handleRailScroll(
-                        IOS_5_5_TEMPLATE.deviceSlug,
+                        compactTemplate.deviceSlug,
                         event.currentTarget,
                       )
                     }
@@ -2423,19 +3047,19 @@ export default function Home() {
                             </div>
 
                             <div
-                              ref={index === 0 ? preview55TileRef : undefined}
+                              ref={index === 0 ? compactTileRef : undefined}
                               className="studio-preview-canvas-shell studio-preview-canvas-shell-5-5"
                             >
                               <IosStoreCanvas
                                 asset={asset}
-                                template={IOS_5_5_TEMPLATE}
+                                template={compactTemplate}
                                 interactive
-                                scale={preview55Scale}
+                                scale={compactPreviewScale}
                                 showUploadCue={
                                   isGuideVisible &&
                                   guideStep === 2 &&
                                   asset.id === guideAssetId &&
-                                  !asset.screenshotName
+                                  !getScreenshotState(asset, compactTemplate.platform).name
                                 }
                                 isTitleEditing={editingTitleAssetId === asset.id}
                                 titleDraft={
@@ -2501,11 +3125,88 @@ export default function Home() {
                       );
                     })}
                   </div>
-                  {railCueState[IOS_5_5_TEMPLATE.deviceSlug]?.hasMore ? (
+                  {railCueState[compactTemplate.deviceSlug]?.hasMore ? (
                     <div className="studio-preview-scroll-fade" aria-hidden="true" />
                   ) : null}
                 </div>
               </div>
+
+              {compactTemplate.platform === "android" ? (
+                <div
+                  className="studio-feature-banner-stage-wrap"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div
+                    className={`studio-feature-banner-card ${
+                      isFeatureBannerSelected
+                        ? "studio-preview-frame-selected"
+                        : ""
+                    }`}
+                    onClick={selectFeatureBanner}
+                  >
+                    <div className="studio-feature-banner-card-header">
+                      <span className="studio-preview-card-name">
+                        Feature banner
+                      </span>
+                    </div>
+                    <div
+                      ref={featureBannerTileRef}
+                      className="studio-feature-banner-canvas-shell"
+                    >
+                      <AndroidFeatureBanner
+                        screens={featureBannerScreens}
+                        background={featureBannerBackground}
+                        scale={featureBannerScale}
+                        interactive
+                        activeSlot={activeFeatureBannerSlot}
+                        onSlotClick={openFeatureBannerPicker}
+                      />
+
+                      {activeFeatureBannerSlot ? (
+                        <div
+                          className={`studio-feature-banner-picker studio-feature-banner-picker-${activeFeatureBannerSlot}`}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <p className="studio-feature-banner-picker-title">
+                            Choose the{" "}
+                            {activeFeatureBannerSlot === "center"
+                              ? "main"
+                              : activeFeatureBannerSlot}{" "}
+                            screen
+                          </p>
+                          <div className="studio-feature-banner-picker-list">
+                            {assets.map((asset, index) => {
+                              const isSelected =
+                                featureBannerScreens[activeFeatureBannerSlot]
+                                  ?.id === asset.id;
+                              return (
+                                <button
+                                  key={asset.id}
+                                  type="button"
+                                  className={`studio-feature-banner-picker-option ${
+                                    isSelected
+                                      ? "studio-feature-banner-picker-option-selected"
+                                      : ""
+                                  }`}
+                                  onClick={() =>
+                                    selectFeatureBannerScreen(
+                                      activeFeatureBannerSlot,
+                                      asset.id,
+                                    )
+                                  }
+                                >
+                                  <span>Screen {index + 1}</span>
+                                  <small>{asset.title.replace(/\n/g, " ")}</small>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </section>
           </div>
         </section>
@@ -2528,13 +3229,13 @@ export default function Home() {
             <div className="studio-modal-header">
               <div>
                 <h3 className="studio-modal-title" id="studio-export-title">
-                  Export screens
+                  Export {activeTemplate.platform === "android" ? "assets" : "screens"}
                 </h3>
                 <p
                   className="studio-export-subtitle"
                   id="studio-export-description"
                 >
-                  Choose which screens to export for {activeTemplate.deviceLabel}.
+                  Choose what to export for {activeTemplate.deviceLabel}.
                 </p>
               </div>
               <button
@@ -2553,7 +3254,7 @@ export default function Home() {
 
             <div className="studio-export-toolbar">
               <span className="studio-export-selection-count" aria-live="polite">
-                {exportSelectionIds.length} of {assets.length} selected
+                {exportSelectionIds.length} of {availableExportIds.length} selected
               </span>
               <button
                 type="button"
@@ -2604,6 +3305,54 @@ export default function Home() {
                   </button>
                 );
               })}
+              {activeTemplate.platform === "android" ? (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={exportSelectionIds.includes(
+                    FEATURE_BANNER_EXPORT_ID,
+                  )}
+                  aria-label={`${
+                    exportSelectionIds.includes(FEATURE_BANNER_EXPORT_ID)
+                      ? "Deselect"
+                      : "Select"
+                  } feature banner`}
+                  className={`studio-export-card ${
+                    exportSelectionIds.includes(FEATURE_BANNER_EXPORT_ID)
+                      ? "studio-export-card-selected"
+                      : ""
+                  }`}
+                  onClick={() => toggleExportAsset(FEATURE_BANNER_EXPORT_ID)}
+                  disabled={isExporting}
+                >
+                  <span className="studio-export-check" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none">
+                      <path d="m3.25 8.2 3 3.05 6.5-6.5" />
+                    </svg>
+                  </span>
+                  <span
+                    className="studio-export-thumbnail studio-export-thumbnail-landscape"
+                    aria-hidden="true"
+                  >
+                    <AndroidFeatureBanner
+                      screens={featureBannerScreens}
+                      background={featureBannerBackground}
+                      scale={
+                        EXPORT_PICKER_THUMB_WIDTH /
+                        ANDROID_FEATURE_BANNER_WIDTH
+                      }
+                    />
+                  </span>
+                  <span className="studio-export-card-copy">
+                    <span className="studio-export-card-name">
+                      Feature banner
+                    </span>
+                    <span className="studio-export-card-title">
+                      Landscape · 1024 × 500
+                    </span>
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             <div className="studio-export-footer">
@@ -2867,6 +3616,22 @@ export default function Home() {
             <IosStoreCanvas asset={asset} template={IOS_5_5_TEMPLATE} />
           </div>
         ))}
+        {assets.map((asset) => (
+          <div
+            key={`${ANDROID_TEMPLATE.deviceSlug}:${asset.id}`}
+            ref={(node) => {
+              exportRefs.current[`${ANDROID_TEMPLATE.deviceSlug}:${asset.id}`] = node;
+            }}
+          >
+            <IosStoreCanvas asset={asset} template={ANDROID_TEMPLATE} />
+          </div>
+        ))}
+        <div ref={featureBannerExportRef}>
+          <AndroidFeatureBanner
+            screens={featureBannerScreens}
+            background={featureBannerBackground}
+          />
+        </div>
       </div>
     </main>
   );
