@@ -1415,6 +1415,7 @@ textarea {
 
   .studio-feature-banner-card,
   .studio-feature-banner-device,
+  .studio-feature-banner-device::after,
   .studio-feature-banner-screen-picker-cue {
     transition: none;
   }
@@ -1530,19 +1531,31 @@ textarea {
 .studio-feature-banner-device {
   position: absolute;
   display: block;
-  overflow: visible;
+  overflow: hidden;
   padding: 0;
   border: 0;
   border-radius: 7%;
   background: transparent;
   color: #ffffff;
   cursor: pointer;
-  opacity: 0.95;
+}
+
+.studio-feature-banner-device::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.2);
+  opacity: 1;
+  pointer-events: none;
   transition: opacity 160ms ease;
 }
 
-.studio-feature-banner-device:hover {
-  opacity: 1;
+.studio-feature-banner-device:hover::after,
+.studio-feature-banner-device:focus-visible::after,
+.studio-feature-banner-device[aria-expanded="true"]::after {
+  opacity: 0;
 }
 
 .studio-feature-banner-device:focus-visible {

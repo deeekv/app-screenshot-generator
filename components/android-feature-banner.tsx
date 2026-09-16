@@ -75,10 +75,10 @@ function FeatureBannerDevice({
         aria-hidden="true"
         className="absolute overflow-hidden"
         style={{
-          left: "2.754%",
-          top: "1.136%",
-          width: "93.847%",
-          height: "97.698%",
+          left: "2.525%",
+          top: "1.034%",
+          width: "94.286%",
+          height: "97.932%",
           borderRadius: "6.38% / 3.05%",
         }}
       >
