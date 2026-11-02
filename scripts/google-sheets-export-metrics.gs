@@ -60,6 +60,34 @@ function doPost(event) {
   }
 }
 
+function doGet(event) {
+  try {
+    const expectedToken = PropertiesService.getScriptProperties().getProperty("READ_TOKEN");
+    const readToken = event && event.parameter ? event.parameter.readToken : "";
+
+    if (!expectedToken || readToken !== expectedToken) {
+      return jsonResponse({ ok: false, error: "Unauthorized" });
+    }
+
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      return jsonResponse({ ok: false, error: "Export Log sheet not found" });
+    }
+
+    const lastRow = sheet.getLastRow();
+    const values = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+    const rows = values
+      .filter((row) => row[0] instanceof Date && !isNaN(row[0].getTime()))
+      .map((row) => [row[0].toISOString(), Number(row[1]), String(row[2]), String(row[3])]);
+
+    return jsonResponse({ ok: true, rows });
+  } catch (error) {
+    console.error(error);
+    return jsonResponse({ ok: false, error: "Unable to read export metrics" });
+  }
+}
+
 function jsonResponse(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
     ContentService.MimeType.JSON,

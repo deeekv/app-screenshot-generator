@@ -1,12 +1,8 @@
-const ALLOWED_TEMPLATES = new Set([
-  "iOS 6.3 inch",
-  "iOS 6.9 inch",
-  "iOS 6.5 inch",
-  "iOS 5.5 inch",
-  "Android 6.8 inch",
-]);
+import { EXPORT_MODES, EXPORT_TEMPLATES } from "@/lib/export-metrics";
 
-const ALLOWED_EXPORT_MODES = new Set(["selected", "all"]);
+const ALLOWED_TEMPLATES = new Set<string>(EXPORT_TEMPLATES);
+
+const ALLOWED_EXPORT_MODES = new Set<string>(EXPORT_MODES);
 
 type ExportMetricPayload = {
   assetsExported?: unknown;

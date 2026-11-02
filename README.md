@@ -29,3 +29,22 @@ Add these variables to the Production environment and redeploy:
 The browser calls `/api/track-export` after a download begins. That server route
 validates the metric and forwards it to Google Sheets without exposing the
 write token to the browser.
+
+### Export tracker dashboard
+
+`/tracker` shows the Export Log as a dashboard: this week's assets against the
+same point last week, a 12-week trend, a template breakdown, the export-mode
+split and the latest exports. Weeks run Monday to Sunday in IST. The page is
+unlisted (`noindex`) but public, and refreshes its data every minute.
+
+To connect it:
+
+1. In Apps Script **Project Settings → Script Properties**, add `READ_TOKEN`
+   with a long, random value (different from `WRITE_TOKEN`).
+2. Paste the latest `scripts/google-sheets-export-metrics.gs`, then select
+   **Deploy → Manage deployments → Edit → New version** so the URL stays the same.
+3. In Vercel, add `EXPORT_METRICS_READ_TOKEN` with the same value as
+   `READ_TOKEN` and redeploy.
+
+In local development without these variables, `/tracker` shows sample data
+with a "Sample data" badge.
