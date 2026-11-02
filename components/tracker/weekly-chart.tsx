@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+} from "react";
 
 import type { ExportMetrics } from "@/lib/export-metrics";
 
@@ -38,11 +44,13 @@ export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
   const columnsRef = useRef<HTMLDivElement>(null);
   const ticks = axisTicks(Math.max(...weeks.map((week) => week.assets)));
   const top = ticks[ticks.length - 1];
-  const activeIndex = hoverIndex ?? pinnedIndex;
-  const active = weeks[activeIndex];
-  const activeName =
-    activeIndex === currentIndex ? "This week" : `Week of ${weekLabel(active.start)}`;
-  const breakdownMax = Math.max(1, ...templates.map((name) => active.templates[name] ?? 0));
+  const nameOf = (index: number) =>
+    index === currentIndex ? "This week" : `Week of ${weekLabel(weeks[index].start)}`;
+  // The readout previews the hovered week; the breakdown stays on the pinned one.
+  const readoutIndex = hoverIndex ?? pinnedIndex;
+  const readout = weeks[readoutIndex];
+  const pinned = weeks[pinnedIndex];
+  const breakdownMax = Math.max(1, ...templates.map((name) => pinned.templates[name] ?? 0));
 
   const indexAt = (event: PointerEvent<HTMLDivElement>) => {
     const columns = columnsRef.current;
@@ -81,10 +89,10 @@ export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
         </div>
         {!showTable && (
           <div className="tracker-chart-readout" aria-live="polite">
-            <span className="tracker-chart-readout-label">{activeName}</span>
+            <span className="tracker-chart-readout-label">{nameOf(readoutIndex)}</span>
             <span className="tracker-chart-readout-value">
-              {numberFormat.format(active.assets)}
-              <span> assets · {numberFormat.format(active.actions)} exports</span>
+              {numberFormat.format(readout.assets)}
+              <span> assets · {numberFormat.format(readout.actions)} exports</span>
             </span>
           </div>
         )}
@@ -163,7 +171,7 @@ export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
                   <div
                     key={week.start}
                     className="tracker-chart-column"
-                    data-active={index === activeIndex}
+                    data-hovered={index === hoverIndex}
                     data-pinned={index === pinnedIndex}
                   >
                     <div
@@ -177,7 +185,7 @@ export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
                 {weeks.map((week, index) => (
                   <span
                     key={week.start}
-                    data-active={index === activeIndex}
+                    data-hovered={index === hoverIndex}
                     data-pinned={index === pinnedIndex}
                     data-current={index === currentIndex}
                   >
@@ -190,26 +198,26 @@ export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
 
           <div id="tracker-week-breakdown" className="tracker-breakdown">
             <p className="tracker-breakdown-title">
-              Devices · {activeIndex === currentIndex ? "this week" : activeName}
+              Devices · {pinnedIndex === currentIndex ? "this week" : nameOf(pinnedIndex)}
             </p>
-            {active.assets === 0 ? (
+            {pinned.assets === 0 ? (
               <p className="tracker-empty">No exports in this week. Pick another bar.</p>
             ) : (
               <ul className="tracker-breakdown-list">
                 {templates.map((name) => {
-                  const assets = active.templates[name] ?? 0;
+                  const assets = pinned.templates[name] ?? 0;
                   return (
                     <li key={name} className="tracker-breakdown-row" data-empty={assets === 0}>
                       <span className="tracker-breakdown-name">{name}</span>
-                      <div className="tracker-meter">
+                      <div className="tracker-breakdown-track">
                         <div
-                          className="tracker-meter-fill"
-                          style={{ width: `${(assets / breakdownMax) * 100}%` }}
+                          className="tracker-breakdown-bar"
+                          style={{ "--share": assets / breakdownMax } as CSSProperties}
                         />
+                        <span className="tracker-breakdown-value">
+                          {numberFormat.format(assets)}
+                        </span>
                       </div>
-                      <span className="tracker-breakdown-value">
-                        {numberFormat.format(assets)}
-                      </span>
                     </li>
                   );
                 })}
