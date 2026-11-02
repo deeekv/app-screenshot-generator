@@ -21,6 +21,8 @@ import { IosStoreCanvas } from "@/components/ios-store-canvas";
 import {
   ANDROID_TEMPLATE,
   IOS_5_5_TEMPLATE,
+  IOS_6_3_TEMPLATE,
+  IOS_6_9_TEMPLATE,
   IOS_TEMPLATE,
   defaultIosAssetState,
   type IosAssetState,
@@ -28,7 +30,8 @@ import {
   type StorePlatform,
 } from "@/lib/ios-template";
 
-const DEVICE_TEMPLATES = [IOS_TEMPLATE, IOS_5_5_TEMPLATE, ANDROID_TEMPLATE] as const;
+const TALL_IOS_TEMPLATES = [IOS_6_3_TEMPLATE, IOS_6_9_TEMPLATE, IOS_TEMPLATE] as const;
+const DEVICE_TEMPLATES = [...TALL_IOS_TEMPLATES, IOS_5_5_TEMPLATE, ANDROID_TEMPLATE] as const;
 
 function formatDeviceLabel(deviceLabel: string) {
   const [platform, ...details] = deviceLabel.split(" ");
@@ -520,7 +523,7 @@ export default function Home() {
       title: "Feature banner",
     }));
   const [activeDeviceSlug, setActiveDeviceSlug] = useState<string>(
-    IOS_TEMPLATE.deviceSlug,
+    IOS_6_3_TEMPLATE.deviceSlug,
   );
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false);
   const [guideStep, setGuideStep] = useState<GuideStep>(1);
@@ -569,7 +572,12 @@ export default function Home() {
 
   const activeTemplate =
     DEVICE_TEMPLATES.find((template) => template.deviceSlug === activeDeviceSlug) ??
-    IOS_TEMPLATE;
+    IOS_6_3_TEMPLATE;
+  // 6.3, 6.9 and 6.5 inch share the tall iOS preview panel.
+  const tallIosTemplate = TALL_IOS_TEMPLATES.find(
+    (template) => template.deviceSlug === activeDeviceSlug,
+  );
+  const previewTemplate = tallIosTemplate ?? IOS_6_3_TEMPLATE;
   const compactTemplate =
     activeDeviceSlug === ANDROID_TEMPLATE.deviceSlug
       ? ANDROID_TEMPLATE
@@ -985,7 +993,7 @@ export default function Home() {
 
   useEffect(() => {
     const previews = [
-      [previewTileRef.current, IOS_TEMPLATE, setPreviewScale],
+      [previewTileRef.current, previewTemplate, setPreviewScale],
       [preview55TileRef.current, IOS_5_5_TEMPLATE, setPreview55Scale],
       [previewAndroidTileRef.current, ANDROID_TEMPLATE, setPreviewAndroidScale],
     ] as const;
@@ -2783,13 +2791,13 @@ export default function Home() {
                 sidePanelOpen ? "" : "studio-preview-panel-full"
               } ${previewPanelSelected ? "studio-preview-panel-selected" : ""}`}
               onClick={selectPreviewPanel}
-              hidden={activeDeviceSlug !== IOS_TEMPLATE.deviceSlug}
+              hidden={!tallIosTemplate}
             >
               <div className="studio-preview-toolbar">
                 <div className="studio-preview-title-stack">
                   <p className="studio-preview-eyebrow">Preview</p>
                   <h2 className="studio-preview-title">
-                    {formatDeviceLabel(IOS_TEMPLATE.deviceLabel)}
+                    {formatDeviceLabel(previewTemplate.deviceLabel)}
                   </h2>
                 </div>
 
@@ -2812,7 +2820,7 @@ export default function Home() {
                       void exportAssetIds(
                         assets.map((asset) => asset.id),
                         "all",
-                        IOS_TEMPLATE,
+                        previewTemplate,
                       );
                     }}
                     disabled={downloadAllDisabled}
@@ -2910,17 +2918,20 @@ export default function Home() {
                             <div
                               ref={index === 0 ? previewTileRef : undefined}
                               className="studio-preview-canvas-shell"
+                              style={{
+                                aspectRatio: `${previewTemplate.exportWidth} / ${previewTemplate.exportHeight}`,
+                              }}
                             >
                               <IosStoreCanvas
                                 asset={asset}
-                                template={IOS_TEMPLATE}
+                                template={previewTemplate}
                                 interactive
                                 scale={previewScale}
                                 showUploadCue={
                                   isGuideVisible &&
                                   guideStep === 2 &&
                                   asset.id === guideAssetId &&
-                                  !getScreenshotState(asset, IOS_TEMPLATE.platform).name
+                                  !getScreenshotState(asset, previewTemplate.platform).name
                                 }
                                 isTitleEditing={editingTitleAssetId === asset.id}
                                 titleDraft={
@@ -2982,7 +2993,12 @@ export default function Home() {
 
                               {isAddHoverVisible ? (
                                 <div className="studio-placeholder-card" aria-hidden="true">
-                                  <div className="studio-placeholder-canvas-shell" />
+                                  <div
+                                    className="studio-placeholder-canvas-shell"
+                                    style={{
+                                      aspectRatio: `${previewTemplate.exportWidth} / ${previewTemplate.exportHeight}`,
+                                    }}
+                                  />
                                 </div>
                               ) : null}
                             </div>
@@ -3003,7 +3019,7 @@ export default function Home() {
                 sidePanelOpen ? "studio-preview-panel-below" : "studio-preview-panel-full"
               } ${previewPanelSelected ? "studio-preview-panel-selected" : ""}`}
               onClick={selectPreviewPanel}
-              hidden={activeDeviceSlug === IOS_TEMPLATE.deviceSlug}
+              hidden={Boolean(tallIosTemplate)}
             >
               <div className="studio-preview-toolbar">
                 <div className="studio-preview-title-stack">
@@ -3678,16 +3694,18 @@ export default function Home() {
         aria-hidden="true"
         className="pointer-events-none fixed left-[-10000px] top-0"
       >
-        {assets.map((asset) => (
-          <div
-            key={`${IOS_TEMPLATE.deviceSlug}:${asset.id}`}
-            ref={(node) => {
-              exportRefs.current[`${IOS_TEMPLATE.deviceSlug}:${asset.id}`] = node;
-            }}
-          >
-            <IosStoreCanvas asset={asset} />
-          </div>
-        ))}
+        {TALL_IOS_TEMPLATES.flatMap((template) =>
+          assets.map((asset) => (
+            <div
+              key={`${template.deviceSlug}:${asset.id}`}
+              ref={(node) => {
+                exportRefs.current[`${template.deviceSlug}:${asset.id}`] = node;
+              }}
+            >
+              <IosStoreCanvas asset={asset} template={template} />
+            </div>
+          )),
+        )}
         {assets.map((asset) => (
           <div
             key={`${IOS_5_5_TEMPLATE.deviceSlug}:${asset.id}`}

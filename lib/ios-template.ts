@@ -49,6 +49,53 @@ export const IOS_TEMPLATE = {
   },
 } as const;
 
+function scaleBox<T extends Record<string, number>>(box: T, scale: number) {
+  return Object.fromEntries(
+    Object.entries(box).map(([key, value]) => [key, value * scale]),
+  ) as { [K in keyof T]: number };
+}
+
+// App Store "iPhone with Dynamic Island" sizes are nearly the same aspect ratio
+// as 6.5-inch, so they reuse its composition scaled uniformly to the new width.
+// The slightly taller canvas leaves a few extra pixels below the device.
+function scaleIosTemplate(
+  deviceLabel: string,
+  deviceSlug: string,
+  width: number,
+  height: number,
+) {
+  const scale = width / IOS_TEMPLATE.stage.width;
+
+  return {
+    ...IOS_TEMPLATE,
+    deviceLabel,
+    deviceSlug,
+    screenshotBorderRadius: IOS_TEMPLATE.screenshotBorderRadius * scale,
+    exportWidth: width,
+    exportHeight: height,
+    stage: { width, height },
+    title: scaleBox(IOS_TEMPLATE.title, scale),
+    screenshot: scaleBox(IOS_TEMPLATE.screenshot, scale),
+    deviceFrame: scaleBox(IOS_TEMPLATE.deviceFrame, scale),
+    backgroundShape: scaleBox(IOS_TEMPLATE.backgroundShape, scale),
+    bottomGlow: scaleBox(IOS_TEMPLATE.bottomGlow, scale),
+  };
+}
+
+export const IOS_6_3_TEMPLATE = scaleIosTemplate(
+  "iOS 6.3 inch",
+  "ios-6-3-inch",
+  1206,
+  2622,
+);
+
+export const IOS_6_9_TEMPLATE = scaleIosTemplate(
+  "iOS 6.9 inch",
+  "ios-6-9-inch",
+  1320,
+  2868,
+);
+
 // The 5.5-inch Figma frame uses the same composition as 6.5-inch. Its device
 // artwork is a uniform 79.917% scale of the 6.5-inch device; text is unchanged.
 const IOS_5_5_DEVICE_SCALE = 749.811 / IOS_TEMPLATE.deviceFrame.width;
@@ -120,6 +167,8 @@ export const ANDROID_TEMPLATE = {
 
 export type IosTemplate =
   | typeof IOS_TEMPLATE
+  | typeof IOS_6_3_TEMPLATE
+  | typeof IOS_6_9_TEMPLATE
   | typeof IOS_5_5_TEMPLATE
   | typeof ANDROID_TEMPLATE;
 
