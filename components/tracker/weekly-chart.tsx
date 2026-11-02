@@ -19,9 +19,9 @@ function weekLabel(start: string) {
   });
 }
 
-// Round ticks: a 1/2/5 step that gives about three gridlines above zero.
+// Round ticks: a whole-number 1/2/5 step that gives about three gridlines above zero.
 function axisTicks(max: number) {
-  const raw = Math.max(1, max) / 3;
+  const raw = Math.max(3, max) / 3;
   const magnitude = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 5, 10].find((factor) => factor * magnitude >= raw)! * magnitude;
   const top = Math.max(step, Math.ceil(max / step) * step);

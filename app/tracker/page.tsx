@@ -75,7 +75,7 @@ function exportCount(totals: ExportTotals) {
 
 function Dashboard({ metrics }: { metrics: ExportMetrics }) {
   const templateMax = Math.max(1, ...metrics.templates.map((template) => template.allTime));
-  const modeActions = Math.max(1, metrics.modes.reduce((sum, mode) => sum + mode.actions, 0));
+  const modeActions = metrics.modes.reduce((sum, mode) => sum + mode.actions, 0);
 
   return (
     <>
@@ -141,8 +141,8 @@ function Dashboard({ metrics }: { metrics: ExportMetrics }) {
             Export mode
           </h2>
           <p className="tracker-panel-note">Share of export actions, all time</p>
-          <div className="tracker-split" aria-hidden="true">
-            {metrics.modes.map((mode) => (
+          <div className="tracker-split" data-empty={modeActions === 0} aria-hidden="true">
+            {modeActions > 0 && metrics.modes.map((mode) => (
               <div
                 key={mode.mode}
                 className="tracker-split-part"
@@ -158,7 +158,7 @@ function Dashboard({ metrics }: { metrics: ExportMetrics }) {
                   {MODE_LABELS[mode.mode] ?? mode.mode}
                 </span>
                 <span className="tracker-mode-share">
-                  {Math.round((mode.actions / modeActions) * 100)}%
+                  {modeActions === 0 ? "–" : `${Math.round((mode.actions / modeActions) * 100)}%`}
                 </span>
                 <span className="tracker-mode-detail">
                   {numberFormat.format(mode.actions)} exports ·{" "}

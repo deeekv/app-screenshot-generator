@@ -77,8 +77,11 @@ function doGet(event) {
 
     const lastRow = sheet.getLastRow();
     const values = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+    // Dates from getValues() can fail `instanceof Date` in the V8 runtime.
+    const isDate = (value) =>
+      Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value.getTime());
     const rows = values
-      .filter((row) => row[0] instanceof Date && !isNaN(row[0].getTime()))
+      .filter((row) => isDate(row[0]))
       .map((row) => [row[0].toISOString(), Number(row[1]), String(row[2]), String(row[3])]);
 
     return jsonResponse({ ok: true, rows });
