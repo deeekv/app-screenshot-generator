@@ -178,6 +178,27 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
+function recordExportMetrics(
+  assetsExported: number,
+  template: IosTemplate,
+  exportMode: "selected" | "all",
+) {
+  void fetch("/api/track-export", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      assetsExported,
+      template: template.deviceLabel,
+      exportMode,
+    }),
+    keepalive: true,
+  }).catch((error) => {
+    console.warn("Unable to record export metrics", error);
+  });
+}
+
 function toArrayBuffer(bytes: Uint8Array) {
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
@@ -1840,11 +1861,13 @@ export default function Home() {
             template.platform === "android" ? "assets" : "screens"
           }.zip`,
         );
+        recordExportMetrics(renderedAssets.length, template, mode);
         return true;
       }
 
       if (renderedAssets.length === 1) {
         downloadBlob(renderedAssets[0].blob, renderedAssets[0].filename);
+        recordExportMetrics(renderedAssets.length, template, mode);
         return true;
       }
 
@@ -1861,6 +1884,7 @@ export default function Home() {
           (template.platform === "android" ? "assets" : "screens") +
           ".zip",
       );
+      recordExportMetrics(renderedAssets.length, template, mode);
 
       return true;
     } catch (error) {
