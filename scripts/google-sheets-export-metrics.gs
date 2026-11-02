@@ -46,6 +46,8 @@ function doPost(event) {
       payload.template,
       payload.exportMode,
     ]);
+    // appendRow applies the locale's default date format; keep the log's own.
+    sheet.getRange(sheet.getLastRow(), 1).setNumberFormat("d mmm yyyy, hh:mm");
 
     return jsonResponse({ ok: true });
   } catch (error) {
