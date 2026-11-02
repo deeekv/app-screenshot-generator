@@ -34,7 +34,7 @@ export type ExportMetrics = {
   lastWeekToDate: ExportTotals;
   last7Days: ExportTotals;
   allTime: ExportTotals;
-  weeks: (ExportTotals & { start: string })[];
+  weeks: (ExportTotals & { start: string; templates: Record<string, number> })[];
   templates: { name: string; thisWeek: number; allTime: number }[];
   modes: (ExportTotals & { mode: string })[];
   recent: ExportRow[];
@@ -139,6 +139,7 @@ export function summarizeExports(rows: ExportRow[], now = new Date()): ExportMet
       .toISOString()
       .slice(0, 10),
     ...empty(),
+    templates: {} as Record<string, number>,
   }));
   const templates = new Map<string, { thisWeek: number; allTime: number }>(
     EXPORT_TEMPLATES.map((name) => [name, { thisWeek: 0, allTime: 0 }]),
@@ -158,7 +159,9 @@ export function summarizeExports(rows: ExportRow[], now = new Date()): ExportMet
     if (time > nowMs - WEEK_MS) add(last7Days, row);
 
     if (time >= firstWeekShown) {
-      add(weeks[Math.floor((time - firstWeekShown) / WEEK_MS)], row);
+      const week = weeks[Math.floor((time - firstWeekShown) / WEEK_MS)];
+      add(week, row);
+      week.templates[row.template] = (week.templates[row.template] ?? 0) + row.assetsExported;
     }
 
     const template = templates.get(row.template) ?? { thisWeek: 0, allTime: 0 };

@@ -107,7 +107,10 @@ function Dashboard({ metrics }: { metrics: ExportMetrics }) {
         </div>
       </section>
 
-      <WeeklyChart weeks={metrics.weeks} />
+      <WeeklyChart
+        weeks={metrics.weeks}
+        templates={metrics.templates.map((template) => template.name)}
+      />
 
       <div className="tracker-columns">
         <section className="tracker-panel" aria-labelledby="tracker-templates-title">
@@ -223,8 +226,14 @@ export default async function TrackerPage() {
           />
           <span className="tracker-header-title">Export tracker</span>
         </a>
-        {result.status === "ok" && (
-          <Freshness generatedAt={result.metrics.generatedAt} source={result.source} />
+        {result.status === "ok" ? (
+          <Freshness
+            status="ok"
+            source={result.source}
+            generatedAt={result.metrics.generatedAt}
+          />
+        ) : (
+          <Freshness status={result.status} />
         )}
       </header>
 

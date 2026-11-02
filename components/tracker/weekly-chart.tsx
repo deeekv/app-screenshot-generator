@@ -6,6 +6,7 @@ import type { ExportMetrics } from "@/lib/export-metrics";
 
 type WeeklyChartProps = {
   weeks: ExportMetrics["weeks"];
+  templates: string[];
 };
 
 const numberFormat = new Intl.NumberFormat("en-US");
@@ -28,28 +29,35 @@ function axisTicks(max: number) {
   return Array.from({ length: top / step + 1 }, (_, index) => index * step);
 }
 
-export function WeeklyChart({ weeks }: WeeklyChartProps) {
+export function WeeklyChart({ weeks, templates }: WeeklyChartProps) {
   const currentIndex = weeks.length - 1;
-  const [activeIndex, setActiveIndex] = useState(currentIndex);
+  // Hover previews a week; a click, tap or arrow key pins it.
+  const [pinnedIndex, setPinnedIndex] = useState(currentIndex);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
   const columnsRef = useRef<HTMLDivElement>(null);
   const ticks = axisTicks(Math.max(...weeks.map((week) => week.assets)));
   const top = ticks[ticks.length - 1];
+  const activeIndex = hoverIndex ?? pinnedIndex;
   const active = weeks[activeIndex];
+  const activeName =
+    activeIndex === currentIndex ? "This week" : `Week of ${weekLabel(active.start)}`;
+  const breakdownMax = Math.max(1, ...templates.map((name) => active.templates[name] ?? 0));
 
-  const scrubTo = (event: PointerEvent<HTMLDivElement>) => {
+  const indexAt = (event: PointerEvent<HTMLDivElement>) => {
     const columns = columnsRef.current;
-    if (!columns) return;
+    if (!columns) return null;
     const rect = columns.getBoundingClientRect();
     const ratio = (event.clientX - rect.left) / rect.width;
-    setActiveIndex(Math.min(currentIndex, Math.max(0, Math.floor(ratio * weeks.length))));
+    return Math.min(currentIndex, Math.max(0, Math.floor(ratio * weeks.length)));
   };
 
   const stepWith = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
     if (!step) return;
     event.preventDefault();
-    setActiveIndex((index) => Math.min(currentIndex, Math.max(0, index + step)));
+    setHoverIndex(null);
+    setPinnedIndex((index) => Math.min(currentIndex, Math.max(0, index + step)));
   };
 
   return (
@@ -60,7 +68,7 @@ export function WeeklyChart({ weeks }: WeeklyChartProps) {
             Assets exported per week
           </h2>
           <p className="tracker-panel-note">
-            Last 12 weeks, Monday to Sunday ·{" "}
+            Click a week to see its devices ·{" "}
             <button
               type="button"
               className="tracker-link-button"
@@ -73,9 +81,7 @@ export function WeeklyChart({ weeks }: WeeklyChartProps) {
         </div>
         {!showTable && (
           <div className="tracker-chart-readout" aria-live="polite">
-            <span className="tracker-chart-readout-label">
-              {activeIndex === currentIndex ? "This week" : `Week of ${weekLabel(active.start)}`}
-            </span>
+            <span className="tracker-chart-readout-label">{activeName}</span>
             <span className="tracker-chart-readout-value">
               {numberFormat.format(active.assets)}
               <span> assets · {numberFormat.format(active.actions)} exports</span>
@@ -96,6 +102,11 @@ export function WeeklyChart({ weeks }: WeeklyChartProps) {
                 <th scope="col" className="tracker-table-number">
                   Exports
                 </th>
+                {templates.map((name) => (
+                  <th key={name} scope="col" className="tracker-table-number">
+                    {name}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -104,66 +115,108 @@ export function WeeklyChart({ weeks }: WeeklyChartProps) {
                   <td>{weekLabel(week.start)}</td>
                   <td className="tracker-table-number">{numberFormat.format(week.assets)}</td>
                   <td className="tracker-table-number">{numberFormat.format(week.actions)}</td>
+                  {templates.map((name) => (
+                    <td key={name} className="tracker-table-number tracker-table-muted">
+                      {numberFormat.format(week.templates[name] ?? 0)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="tracker-chart-plot">
-          <div className="tracker-chart-axis" aria-hidden="true">
-            {ticks.map((tick) => (
-              <span key={tick} style={{ bottom: `${(tick / top) * 100}%` }}>
-                {tickFormat.format(tick)}
-              </span>
-            ))}
-          </div>
-          <div
-            className="tracker-chart-area"
-            role="slider"
-            tabIndex={0}
-            aria-label="Week"
-            aria-valuemin={0}
-            aria-valuemax={currentIndex}
-            aria-valuenow={activeIndex}
-            aria-valuetext={`Week of ${weekLabel(active.start)}: ${active.assets} assets, ${active.actions} exports`}
-            onPointerMove={scrubTo}
-            onPointerDown={scrubTo}
-            onPointerLeave={() => setActiveIndex(currentIndex)}
-            onKeyDown={stepWith}
-          >
-            <div className="tracker-chart-grid" aria-hidden="true">
+        <>
+          <div className="tracker-chart-plot">
+            <div className="tracker-chart-axis" aria-hidden="true">
               {ticks.map((tick) => (
-                <span key={tick} style={{ bottom: `${(tick / top) * 100}%` }} />
-              ))}
-            </div>
-            <div ref={columnsRef} className="tracker-chart-columns">
-              {weeks.map((week, index) => (
-                <div
-                  key={week.start}
-                  className="tracker-chart-column"
-                  data-active={index === activeIndex}
-                >
-                  <div
-                    className="tracker-chart-bar"
-                    style={{ height: `${(week.assets / top) * 100}%` }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="tracker-chart-labels" aria-hidden="true">
-              {weeks.map((week, index) => (
-                <span
-                  key={week.start}
-                  data-active={index === activeIndex}
-                  data-current={index === currentIndex}
-                >
-                  {weekLabel(week.start)}
+                <span key={tick} style={{ bottom: `${(tick / top) * 100}%` }}>
+                  {tickFormat.format(tick)}
                 </span>
               ))}
             </div>
+            <div
+              className="tracker-chart-area"
+              role="slider"
+              tabIndex={0}
+              aria-label="Week"
+              aria-valuemin={0}
+              aria-valuemax={currentIndex}
+              aria-valuenow={pinnedIndex}
+              aria-valuetext={`Week of ${weekLabel(weeks[pinnedIndex].start)}: ${weeks[pinnedIndex].assets} assets`}
+              aria-controls="tracker-week-breakdown"
+              onPointerMove={(event) => setHoverIndex(indexAt(event))}
+              onPointerDown={(event) => {
+                const index = indexAt(event);
+                if (index !== null) setPinnedIndex(index);
+              }}
+              onPointerLeave={() => setHoverIndex(null)}
+              onKeyDown={stepWith}
+            >
+              <div className="tracker-chart-grid" aria-hidden="true">
+                {ticks.map((tick) => (
+                  <span key={tick} style={{ bottom: `${(tick / top) * 100}%` }} />
+                ))}
+              </div>
+              <div ref={columnsRef} className="tracker-chart-columns">
+                {weeks.map((week, index) => (
+                  <div
+                    key={week.start}
+                    className="tracker-chart-column"
+                    data-active={index === activeIndex}
+                    data-pinned={index === pinnedIndex}
+                  >
+                    <div
+                      className="tracker-chart-bar"
+                      style={{ height: `${(week.assets / top) * 100}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="tracker-chart-labels" aria-hidden="true">
+                {weeks.map((week, index) => (
+                  <span
+                    key={week.start}
+                    data-active={index === activeIndex}
+                    data-pinned={index === pinnedIndex}
+                    data-current={index === currentIndex}
+                  >
+                    {weekLabel(week.start)}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+
+          <div id="tracker-week-breakdown" className="tracker-breakdown">
+            <p className="tracker-breakdown-title">
+              Devices · {activeIndex === currentIndex ? "this week" : activeName}
+            </p>
+            {active.assets === 0 ? (
+              <p className="tracker-empty">No exports in this week. Pick another bar.</p>
+            ) : (
+              <ul className="tracker-breakdown-list">
+                {templates.map((name) => {
+                  const assets = active.templates[name] ?? 0;
+                  return (
+                    <li key={name} className="tracker-breakdown-row" data-empty={assets === 0}>
+                      <span className="tracker-breakdown-name">{name}</span>
+                      <div className="tracker-meter">
+                        <div
+                          className="tracker-meter-fill"
+                          style={{ width: `${(assets / breakdownMax) * 100}%` }}
+                        />
+                      </div>
+                      <span className="tracker-breakdown-value">
+                        {numberFormat.format(assets)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
       )}
     </section>
   );
