@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 type FreshnessProps =
   | { status: "ok"; source: "sheet" | "sample"; generatedAt: string }
@@ -13,6 +13,8 @@ const REFRESH_MS = 60_000;
 // few refresh cycles before calling the data stale.
 const STALE_MS = 5 * 60_000;
 const CHECK_MS = 15_000;
+// A refresh can bring these back to live; missing env vars need a redeploy.
+const RETRYABLE = new Set(["stale", "error"]);
 
 const STATES = {
   live: { label: "Live", detail: "Showing the latest Export Log data." },
@@ -34,6 +36,7 @@ const STATES = {
 export function Freshness(props: FreshnessProps) {
   const router = useRouter();
   const [now, setNow] = useState<number | null>(null);
+  const [refreshing, startRefresh] = useTransition();
   const generatedMs = props.status === "ok" ? Date.parse(props.generatedAt) : null;
 
   useEffect(() => {
@@ -72,6 +75,25 @@ export function Freshness(props: FreshnessProps) {
     <div className="tracker-freshness" data-state={state} title={detail} role="status">
       <span className="tracker-freshness-dot" aria-hidden="true" />
       <span className="tracker-freshness-label">{label}</span>
+      {RETRYABLE.has(state) && (
+        <button
+          type="button"
+          className="tracker-freshness-refresh"
+          aria-label="Refresh data"
+          title="Refresh data"
+          disabled={refreshing}
+          data-refreshing={refreshing}
+          onClick={() => {
+            setNow(Date.now());
+            startRefresh(() => router.refresh());
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+            <path d="M12.5 1.5v3h-3" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
